@@ -95,12 +95,14 @@ class PatchMatchInpainting():
         w, h = n_patch_x*self.ps, n_patch_y*self.ps
         img = Image.new('RGB', (w, h))
 
+        positions_in_a = np.stack(np.meshgrid(np.arange(n_patch_x), np.arange(n_patch_y)), axis=2)
+
+        positions_in_b = offsets + positions_in_a
+
         for i in range(n_patch_x):
             for j in range(n_patch_y):
-                patch_bbox = self._get_patch_bbox(*offsets[i, j, :])
-                print(patch_bbox)
+                patch_bbox = self._get_patch_bbox(*positions_in_b[i, j, :])#offsets[i, j, :])
                 cropped_img = self.img.crop(patch_bbox) # offsets[i, j, :])
-                print(cropped_img)
                 img.paste(cropped_img, (i*self.ps, j*self.ps))
 
         return img
