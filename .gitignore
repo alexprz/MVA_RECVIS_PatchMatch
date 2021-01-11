@@ -3,3 +3,5 @@ papers
 .DS_Store
 .vscode
 __pycache__
+.mypy_cache
+sandbox
