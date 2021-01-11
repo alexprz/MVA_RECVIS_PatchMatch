@@ -20,7 +20,7 @@ class PatchMatchInpainting():
 
         """
 
-        self.original_img = img
+        self.img = img
         self.w, self.h = img.size
         self.ps = patch_size
         self.alpha = alpha
@@ -76,16 +76,14 @@ class PatchMatchInpainting():
             inpainted_img : PIL image
 
         """
-        # Init offsets
-        # f = self._init_offsets()
-        img_a = self.original_img.crop(bbox)
-        x_a, y_a = bbox[0], bbox[1]
-        w_a, h_a = img_a.size
+        # Rescale according to patch size
+        resized_size = np.floor(np.array(self.img.size)/self.ps).astype(int)
+        resized_bbox = np.floor(np.array(bbox)/self.ps).astype(int)
 
-        f = self._init_offsets(self.original_img.size, bbox)
+        # Randomly init offsets
+        f = self._init_offsets(resized_size, resized_bbox)
 
         print(f)
-        print(f.shape)
 
 
 
