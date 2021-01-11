@@ -33,20 +33,20 @@ class PatchMatchInpainting():
 
     @staticmethod
     def _get_bbox_wh(bbox):
-        x1, y1, x2, y2 = self._coords_from_bbox(bbox)
+        x1, y1, x2, y2 = PatchMatchInpainting._coords_from_bbox(bbox)
         return x2-x1, y2-y1
 
     @staticmethod
     def _get_mask(img_shape, bbox):
-        x1, y1, x2, y2 = self._coords_from_bbox(bbox)
+        x1, y1, x2, y2 = PatchMatchInpainting._coords_from_bbox(bbox)
         mask = np.zeros(img_shape)
         mask[x1:x2, y1:y2] = 1
         return mask
 
     @staticmethod
     def _init_offsets(img_shape, bbox):
-        w, h = self._get_bbox_wh(bbox)
-        mask = self._get_mask(img_shape, bbox)
+        w, h = PatchMatchInpainting._get_bbox_wh(bbox)
+        mask = PatchMatchInpainting._get_mask(img_shape, bbox)
 
         # Retrieve all the coordinates outside the mask (the B image)
         b_coords = np.where(mask == 0)
