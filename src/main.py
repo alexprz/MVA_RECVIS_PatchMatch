@@ -11,9 +11,9 @@ pm = PatchMatchInpainting(img, patch_size=5, alpha=0.5)
 
 # bbox = (10, 10, 30, 30)
 w, h = img.size
-bbox = (w//2-50, h//2-50, w//2+50, h//2+50)
+bbox = (w//2-50, 20, w//2+50, 70)
 
-f = pm.inpaint_from_bbox(bbox)
+f = pm.inpaint_from_bbox(bbox, n_iter=50)
 mask_filled = pm.fill_from_offsets(f)
 
 # mask_filled.show()
