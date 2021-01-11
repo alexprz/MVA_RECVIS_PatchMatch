@@ -1,5 +1,6 @@
 """Implement the patch match algorithm."""
 import numpy as np
+from PIL import Image, ImageDraw
 
 
 class PatchMatchInpainting():
@@ -83,8 +84,39 @@ class PatchMatchInpainting():
         # Randomly init offsets
         f = self._init_offsets(resized_size, resized_bbox)
 
-        print(f)
+        return f
 
+    def _get_patch_bbox(self, i, j):
+        return i*self.ps, j*self.ps, (i+1)*self.ps, (j+1)*self.ps
+
+    def fill_from_offsets(self, offsets):
+        n_patch_x, n_patch_y, _ = offsets.shape
+
+        w, h = n_patch_x*self.ps, n_patch_y*self.ps
+        img = Image.new('RGB', (w, h))
+
+        for i in range(n_patch_x):
+            for j in range(n_patch_y):
+                patch_bbox = self._get_patch_bbox(*offsets[i, j, :])
+                print(patch_bbox)
+                cropped_img = self.img.crop(patch_bbox) # offsets[i, j, :])
+                print(cropped_img)
+                img.paste(cropped_img, (i*self.ps, j*self.ps))
+
+        return img
+
+    def get_masked_img(self, bbox):
+        x1, y1, x2, y2 = self._coords_from_bbox(bbox)
+        img = self.img.copy()
+        img_draw = ImageDraw.Draw(img)
+        img_draw.rectangle(bbox, fill='black')
+
+        return img
+
+    def fill_hole(self, x, y, filling_img):
+        img = self.img.copy()
+        img.paste(filling_img, (x, y))
+        return img
 
 
 
