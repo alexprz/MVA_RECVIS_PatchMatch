@@ -84,11 +84,12 @@ class PatchMatchInpainting():
         resized_bbox = np.floor(np.array(bbox)/self.ps).astype(int)
 
         imgA = self.img.crop(bbox)
+        imgB = self.get_masked_img(bbox)
 
         imgA_flipped = imgA.transpose(Image.FLIP_LEFT_RIGHT)
         imgA_flipped = imgA_flipped.transpose(Image.FLIP_TOP_BOTTOM)
 
-        imgB_flipped = self.img.transpose(Image.FLIP_LEFT_RIGHT)
+        imgB_flipped = imgB.transpose(Image.FLIP_LEFT_RIGHT)
         imgB_flipped = imgB_flipped.transpose(Image.FLIP_TOP_BOTTOM)
 
         # Randomly init offsets
@@ -101,7 +102,7 @@ class PatchMatchInpainting():
             patch_B_bbox = self._get_patch_bbox(i2, j2)
 
             img_a = imgA_flipped if flipped else imgA
-            img_b = imgB_flipped if flipped else self.img
+            img_b = imgB_flipped if flipped else imgB
 
             patch_A = np.array(img_a.crop(patch_A_bbox))
             patch_B = np.array(img_b.crop(patch_B_bbox))
@@ -111,6 +112,8 @@ class PatchMatchInpainting():
             return SSD
 
         curr_f = f
+
+        n_patch_x, n_patch_y, *_ = f.shape
 
         # Iterative update
         for k in range(1, n_iter+1):
@@ -124,7 +127,9 @@ class PatchMatchInpainting():
                 curr_f = np.flip(curr_f, axis=(0, 1))
                 flip = True
 
-            else:
+            elif k:
+                if k > 2:
+                    curr_f = np.flip(curr_f, axis=(0, 1))
                 flip = False
 
             for i, j in self._patch_iterator(f.shape):
@@ -135,7 +140,7 @@ class PatchMatchInpainting():
                 if i > 0:
                     left_offset = curr_f[i-1, j, :]
                 else:
-                    left_offset = None
+                    left_offset = np.array([0, -1])
                     # left_patch_bbox = self._get_patch_bbox(*left_offset)
                 # else:
                 #     left_patch_bbox =
@@ -146,7 +151,7 @@ class PatchMatchInpainting():
                 if j > 0:
                     up_offset = curr_f[i, j-1, :]
                 else:
-                    up_offset = None
+                    up_offset = np.array([-1, 0])
                     # up_patch = self._get_patch_bbox(*up_offset)
                 # else:
                 #     up_patch =
@@ -154,9 +159,42 @@ class PatchMatchInpainting():
                 if up_offset is not None and D(i, j, *up_offset, flip) < D(i, j, *argmin, flip):
                     argmin = up_offset
 
+                # if flip:
+                #     # print(argmin[0])
+                #     argmin[0] = n_patch_x - argmin[0]
+                #     # print(argmin[0])
+                #     argmin[1] = n_patch_y - argmin[1]
+
                 curr_f[i, j, :] = argmin
 
+
                 # Random search stage
+                v0 = curr_f[i, j, :]
+                k = 0
+                argmin = curr_f[i, j, :]
+                while True:
+                    radius = self.beta/self.ps*self.alpha**k
+
+                    if radius < 1:
+                        break
+
+                    eps = np.random.uniform(-1, 1, size=2)
+                    u = np.floor(v0 + radius*eps)
+
+                    if D(i, j, *u, flip) < D(i, j, *argmin, flip):
+                        argmin = u
+
+                    k += 1
+
+                # if flip:
+                #     # print(argmin[0])
+                #     argmin[0] = n_patch_x - argmin[0]
+                #     # print(argmin[0])
+                #     argmin[1] = n_patch_y - argmin[1]
+
+                curr_f[i, j, :] = argmin
+        # if flip:
+        #     curr_f = np.flip(curr_f, axis=(0, 1))
 
         return curr_f
 
@@ -177,7 +215,6 @@ class PatchMatchInpainting():
 
         positions_in_a = np.stack(np.meshgrid(np.arange(n_patch_y), np.arange(n_patch_x)), axis=2)
 
-        print(self.n_patch_y, self.n_patch_x)
         positions_in_b = np.clip(offsets + positions_in_a, [0, 0], [self.n_patch_x-1, self.n_patch_y-1])
 
         for i, j in self._patch_iterator((n_patch_x, n_patch_y)):
