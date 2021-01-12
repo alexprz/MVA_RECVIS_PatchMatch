@@ -5,25 +5,36 @@ from PIL import Image
 
 
 np.random.seed(0)
+
+# Load an image
 # img = Image.open('img/lenna.png')
 img = Image.open('img/cow.jpg')
 img.show()
 
+# Get the patch match algorithm
+# The higher the alpha, the longer the iterations
 pm = PatchMatchInpainting(img, patch_size=5, alpha=0.5, beta=50)
 
-# bbox = (10, 10, 30, 30)
+# Choose the bbox of the area to mask
 w, h = img.size
+# bbox = (10, 10, 30, 30)
 # bbox = (w//2-50, 20, w//2+50, 70)
 # bbox = (w//2, 290, w//2+70, 340)
 bbox = (300, 90, 750, 350)
 
+# Get the masked image (for plotting purpose only)
+img_mask = pm.get_masked_img(bbox)
+
+# Inpaint the image (f the resulting deplacement field)
 f = pm.inpaint_from_bbox(bbox, n_iter=5)
+
+# Retrieve the reconstructed area from the deplacement field
 mask_filled = pm.fill_from_offsets(f)
 
-mask_filled.show()
-
-img_mask = pm.get_masked_img(bbox)
-img_mask.show()
-
+# Filled the masked image with the reconstruction mask
 img_filled = pm.fill_hole(bbox[0], bbox[1], mask_filled)
+
+# Plot all
+mask_filled.show()
+img_mask.show()
 img_filled.show()
