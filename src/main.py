@@ -9,7 +9,7 @@ np.random.seed(0)
 # Load an image
 # img = Image.open('img/lenna.png')
 img = Image.open('img/cow.jpg')
-img.show()
+# img.show()
 
 # Get the patch match algorithm
 # The higher the alpha, the longer the iterations
@@ -26,15 +26,15 @@ bbox = (300, 90, 750, 350)
 img_mask = pm.get_masked_img(bbox)
 
 # Inpaint the image (f the resulting deplacement field)
-f = pm.inpaint_from_bbox(bbox, n_iter=5)
+field = pm.inpaint_from_bbox(bbox, n_iter=5)
 
 # Retrieve the reconstructed area from the deplacement field
-mask_filled = pm.fill_from_offsets(f)
+mask_filled = pm.fill_from_field(field)
 
 # Filled the masked image with the reconstruction mask
 img_filled = pm.fill_hole(bbox[0], bbox[1], mask_filled)
 
 # Plot all
-mask_filled.show()
-img_mask.show()
+# mask_filled.show()
+# img_mask.show()
 img_filled.show()
