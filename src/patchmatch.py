@@ -2,6 +2,8 @@
 import numpy as np
 from PIL import Image, ImageDraw
 
+from sklearn.neighbors import KDTree
+
 
 class PatchMatchInpainting():
     """Implement the patch match algorithm for image inpainting."""
@@ -22,13 +24,53 @@ class PatchMatchInpainting():
         """
         assert alpha < 1
         self.img = img
-        self.w, self.h = img.size
+        self.W, self.H = img.size
         self.ps = patch_size
         self.alpha = alpha
         self.beta = img.size[0] if beta is None else beta
 
-        # Compute the number of patch in the full image along each dim
-        self.n_patch_x, self.n_patch_y = np.floor(np.array(img.size)/self.ps).astype(int)
+        # Compute the size of the patch grid
+        self.Wp = self.W//self.ps
+        self.Hp = self.H//self.ps
+
+        # Structure the pixels of the original image in patchs
+        img_array = np.array(self.img)
+        img_array = img_array[:self.Hp*self.ps, :self.Wp*self.ps, :]
+        img_array = img_array.reshape(self.Hp, self.ps, self.Wp, self.ps, -1)
+        img_array = img_array.swapaxes(1, 2)
+        self.img_patches = img_array
+
+    def _pixel_to_patch_coords(self, X, Y):
+        """Return patch coordinates from pixel ones.
+
+        Args:
+        -----
+            X : int
+            Y : int
+
+        Returns:
+        --------
+            Xp : int
+            Yp : int
+
+        """
+        assert X < self.W
+        assert Y < self.H
+
+        Xp = X//self.ps
+        Yp = Y//self.ps
+
+        assert Xp < self.Wp
+        assert Yp < self.Hp
+
+        return Xp, Yp
+
+    def _pixel_to_patch_bbox(self, bbox):
+        """Return patch bbox from pixel one."""
+        X1, Y1, X2, Y2 = self._coords_from_bbox(bbox)
+        X1p, Y1p = self._pixel_to_patch_coords(X1, Y1)
+        X2p, Y2p = self._pixel_to_patch_coords(X2, Y2)
+        return X1p, Y1p, X2p, Y2p
 
     @staticmethod
     def _coords_from_bbox(bbox):
@@ -71,6 +113,13 @@ class PatchMatchInpainting():
         # Return offsets
         return positions_in_b - positions_in_a
 
+    def _init_field(self, indices_Bp, wp, hp):
+        idx = np.random.choice(np.arange(indices_Bp.shape[0]), size=wp*hp)
+        field = indices_Bp[idx].reshape(hp, wp, 2)
+
+        return field
+
+
     def inpaint_from_bbox(self, bbox, n_iter):
         """Inpaint a masked region given by a bbox.
 
@@ -84,9 +133,42 @@ class PatchMatchInpainting():
             inpainted_img : PIL image
 
         """
+        bboxp = self._pixel_to_patch_bbox(bbox)
+        x1p, y1p, x2p, y2p = self._coords_from_bbox(bboxp)
+        wp, hp = self._get_bbox_wh(bboxp)
+        Wp, Hp = self.Wp, self.Hp
+
+        # Get patch indices for A and B
+        # indices_Ap = np.indices((hp, wp)).reshape(2, hp*wp).T
+        is_patch_in_A = np.zeros((Hp, Wp)).astype(bool)
+        is_patch_in_A[y1p:y2p, x1p:x2p] = True
+        is_patch_in_A2D = is_patch_in_A
+        is_patch_in_A = is_patch_in_A.flatten()
+
+        indices_Bp = np.indices((Hp, Wp)).reshape(2, Hp*Wp).T
+        indices_Bp = np.delete(indices_Bp, is_patch_in_A, axis=0)
+
+        # Retrieve all the patches from B (A is excluded)
+        patches_B = self.img_patches[indices_Bp[:, 0], indices_Bp[:, 1], :, :]
+        patches_B = patches_B.reshape(indices_Bp.shape[0], -1)
+
+        # Create a kdtree for computing the distance later
+        print('Init kdtree')
+        kdtree = KDTree(patches_B)
+
+        # Init field
+        field = self._init_field(indices_Bp, wp, hp)
+
+        for i, j in self._patch_iterator(field.shape):
+            I, J = field[i, j]
+            assert not is_patch_in_A2D[I, J]
+
+        return field
+        exit()
+
         # Rescale according to patch size
-        resized_size = np.floor(np.array(self.img.size)/self.ps).astype(int)
-        resized_bbox = np.floor(np.array(bbox)/self.ps).astype(int)
+        # resized_size = np.floor(np.array(self.img.size)/self.ps).astype(int)
+        # resized_bbox = np.floor(np.array(bbox)/self.ps).astype(int)
 
         # Get the two images: A is the masked area and B the rest of the image
         imgA = self.img.crop(bbox)
@@ -226,6 +308,22 @@ class PatchMatchInpainting():
             cropped_img = self.img.crop(patch_bbox)
             img.paste(cropped_img, (i*self.ps, j*self.ps))
 
+        return img
+
+    def fill_from_field(self, field):
+        """Get the filled masked area from offsets."""
+        hp, wp, _ = field.shape
+
+        w, h = wp*self.ps, hp*self.ps
+        img = Image.new('RGB', (w, h))
+
+        for yp, xp in self._patch_iterator((hp, wp)):
+            Yp, Xp = field[yp, xp]
+            patch = self.img_patches[Yp, Xp, :, :, :]
+            img_patch = Image.fromarray(patch)
+            img.paste(img_patch, (xp*self.ps, yp*self.ps))
+
+        print(field.shape)
         return img
 
     def get_masked_img(self, bbox):
