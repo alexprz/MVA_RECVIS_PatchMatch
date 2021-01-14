@@ -1,6 +1,8 @@
 """Main script."""
 import numpy as np
 from patchmatch import PatchMatchInpainting
+from inpainting import Inpainting
+
 from PIL import Image
 
 
@@ -13,14 +15,19 @@ img = Image.open('img/cow.jpg')
 
 # Get the patch match algorithm
 # The higher the alpha, the longer the iterations
-pm = PatchMatchInpainting(img, patch_size=5, alpha=0.5, beta=50)
+# pm = PatchMatchInpainting(img, patch_size=5, alpha=0.5, beta=50)
+inp = Inpainting(img, patch_radius=1, alpha=.5, beta=10)
 
 # Choose the bbox of the area to mask
 w, h = img.size
 # bbox = (10, 10, 30, 30)
 # bbox = (w//2-50, 20, w//2+50, 70)
 # bbox = (w//2, 290, w//2+70, 340)
-bbox = (300, 90, 750, 350)
+# bbox = (300, 90, 750, 350)
+bbox = (300, 90, 310, 100)
+
+inp.inpaint(bbox)
+exit()
 
 # Get the masked image (for plotting purpose only)
 img_mask = pm.get_masked_img(bbox)
