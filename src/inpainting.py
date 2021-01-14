@@ -138,6 +138,7 @@ class Inpainting():
         assert isinstance(patch_radius, int) and patch_radius >= 0
 
         self.B = img
+        self.array_B = np.array(img)
         self.bbox_B = Bbox(0, 0, img.width, img.height)
         self.bbox_B_t = self.bbox_B.pad(-patch_radius)
         self.pr = patch_radius
@@ -165,6 +166,17 @@ class Inpainting():
         p = phi[d[:, 0]-bbox_A_t.y1-1, d[:, 1]-bbox_A_t.x1-1]  # (p, 2)
         p = p + h
 
+        # print(p.shape)
+        u_t = self.array_B[p[:, 0], p[:, 1], :]
+        # print(u_t.shape)
+        u_t = u_t.mean(axis=0)
+
+        # print(u_t.shape)
+        # print(u_t)
+        return u_t
+
+        # exit()
+
         M = (p[None, :, :] == indices_B[:, None, :]).astype(int)
         # print(np.unique(M, return_counts=True))
         M = M.any(axis=2)
@@ -188,7 +200,7 @@ class Inpainting():
         u = bbox_A.zeros(3)
 
         for i, (y, x) in enumerate(bbox_A):
-            print(i)
+            # print(i)
             u[y-bbox_A.y1-1, x-bbox_A.x1-1, :] = self.fz(phi, y, x, bbox_A_t, bbox_A, indices_B, B)
 
         return u
@@ -225,9 +237,13 @@ class Inpainting():
         u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
 
         img = Image.fromarray(np.uint8(u))
-        img.show()
-        exit()
+        # img.show()
+        # exit()
 
-        return u
+        return img
 
-
+    def fill_hole(self, x, y, filling_img):
+        """Fill the original image with a filling image at given positions."""
+        img = self.B.copy()
+        img.paste(filling_img, (x, y))
+        return img
