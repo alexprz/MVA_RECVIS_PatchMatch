@@ -150,7 +150,7 @@ class Inpainting():
         self.bbox_B_t = self.bbox_B.pad(-patch_radius)
         self.pr = patch_radius
         self.alpha = alpha
-        self.beta = img.size[0] if beta is None else beta
+        self.beta = max(img.size[0], img.size[1]) if beta is None else beta
 
     def patch_indices(self, flatten=False):
         n = 2*self.pr + 1
@@ -250,50 +250,15 @@ class Inpainting():
 
         indices_B = np.indices((H, W)).reshape(2, H*W).T
         indices_B = np.delete(indices_B, is_patch_in_A_t, axis=0)
-        # # print(indices_B.shape)
 
         B = np.array(self.B)
-
-        # # phi = 10*bbox_A_t.ones(2)
-        # w_t, h_t = bbox_A_t.size
-        # # phi = np.random.randint(0, 200, size=(h_t, w_t, 2))
-
-        # is_patch_on_edge = np.zeros((H, W)).astype(bool)
-        # # is_patch_on_edge[self.pr+1:-self.pr-1, self.pr+1:-self.pr-1] = True
-        # is_patch_on_edge[:self.pr, :] = True
-        # is_patch_on_edge[-self.pr:, :] = True
-        # is_patch_on_edge[:, :self.pr] = True
-        # is_patch_on_edge[:, -self.pr:] = True
-        # # print(np.unique(is_patch_on_edge, return_counts=True))
-        # is_patch_on_edge = is_patch_on_edge.flatten()
-
-        # indices_B_t = np.indices((H, W)).reshape(2, H*W).T
-        # # print(indices_B_t.shape)
-        # indices_B_t = np.delete(indices_B_t, (is_patch_on_edge | is_patch_in_A_t), axis=0)
-        # # print(indices_B_t.shape)
-        # idx = np.random.choice(np.arange(indices_B_t.shape[0]), size=w_t*h_t)
-        # phi = indices_B_t[idx].reshape(h_t, w_t, 2)
-        # # print(np.max(phi, axis=1))
-        # B = np.array(self.B)
-        # B = B[indices_B[:, 0], indices_B[:, 1], :]
-        # u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
-
-        # # whole_u.paste(Image.fromarray(np.uint8(u)), (bbox_A.x1, bbox_A.y1))
-
-        # whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
 
         for k in range(n_iter):
             phi = self.map_update(whole_u, bbox_A_t, n_iter_pm)
 
-            # print(phi.shape)
             phi_r = phi.reshape(-1, 2)
-            # x_min = phi_r.min(axis=0)
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
-            # exit()
-            # x_min = np.zeros(self.bbox_B.w)
-            # img = Image.fromarray(np.uint8(u))
-            # img.show()
-            # exit()
+
             u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
             whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
 
@@ -341,6 +306,7 @@ class Inpainting():
             print(f'Patch match iter {k}')
             flip = (k % 2 == 0)
             for y, x in bbox_A_t.iterator(flip=flip):
+                # Propagation stage
                 # y = y_A - y0
                 # x = x_A - x0
                 patch0 = u[y-pr:y+pr, x-pr:x+pr, :]
@@ -368,19 +334,44 @@ class Inpainting():
                 D3 = D(patch0, patch3)
 
                 argmin = y1, x1
-                Dmin = D1
+                D_min = D1
 
-                if D2 < Dmin:
+                if D2 < D_min:
                     argmin = y2, x2
-                    Dmin = D2
+                    D_min = D2
 
-                if D3 < Dmin:
+                if D3 < D_min:
                     argmin = y3, x3
-                    Dmin = D3
+                    D_min = D3
 
                 y_argmin, x_argmin = argmin
                 assert self.pr <= x_argmin < self.bbox_B.w - self.pr
                 assert self.pr <= y_argmin < self.bbox_B.h - self.pr
                 phi[y-y0, x-x0, :] = argmin
+
+                # Random search stage
+                v0 = phi[y-y0, x-x0, :]
+                k = 0
+                while True:
+                    # Radius of the search
+                    radius = self.beta*self.alpha**k
+
+                    if radius < 1:
+                        # We stop when the radius is too small
+                        break
+
+                    # Randomly retrieve a nearby offset
+                    eps = np.random.uniform(-1, 1, size=2)
+                    y_rand, x_rand = np.clip((v0 + radius*eps).astype(int), [pr, pr], [H-pr-1, W-pr-1])
+
+                    # Check if it is better
+                    patch_rand = u[y_rand-pr:y_rand+pr, x_rand-pr:x_rand+pr, :]
+
+                    D_rand = D(patch0, patch_rand)
+                    if D_rand < D_min:
+                        phi[y-y0, x-x0, :] = y_rand, x_rand
+                        D_min = D_rand
+
+                    k += 1
 
         return phi

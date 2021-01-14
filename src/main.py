@@ -16,7 +16,7 @@ img = Image.open('img/cow.jpg')
 # Get the patch match algorithm
 # The higher the alpha, the longer the iterations
 # pm = PatchMatchInpainting(img, patch_size=5, alpha=0.5, beta=50)
-inp = Inpainting(img, patch_radius=2, alpha=.5, beta=10)
+inp = Inpainting(img, patch_radius=2, alpha=.5, beta=None)
 
 # Choose the bbox of the area to mask
 w, h = img.size
