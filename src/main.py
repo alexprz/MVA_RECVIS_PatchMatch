@@ -20,6 +20,7 @@ inp = Inpainting(img, patch_radius=2, alpha=.5, beta=10)
 
 # Choose the bbox of the area to mask
 w, h = img.size
+print(w, h)
 # bbox = (10, 10, 30, 30)
 # bbox = (w//2-50, 20, w//2+50, 70)
 # bbox = (w//2, 290, w//2+70, 340)

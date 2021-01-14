@@ -228,10 +228,29 @@ class Inpainting():
 
         indices_B = np.indices((H, W)).reshape(2, H*W).T
         indices_B = np.delete(indices_B, is_patch_in_A_t, axis=0)
+        # print(indices_B.shape)
+
 
         # phi = 10*bbox_A_t.ones(2)
         w_t, h_t = bbox_A_t.size
-        phi = np.random.randint(0, 200, size=(h_t, w_t, 2))
+        # phi = np.random.randint(0, 200, size=(h_t, w_t, 2))
+
+        is_patch_on_edge = np.zeros((H, W)).astype(bool)
+        # is_patch_on_edge[self.pr+1:-self.pr-1, self.pr+1:-self.pr-1] = True
+        is_patch_on_edge[:self.pr, :] = True
+        is_patch_on_edge[-self.pr:, :] = True
+        is_patch_on_edge[:, :self.pr] = True
+        is_patch_on_edge[:, -self.pr:] = True
+        # print(np.unique(is_patch_on_edge, return_counts=True))
+        is_patch_on_edge = is_patch_on_edge.flatten()
+
+        indices_B_t = np.indices((H, W)).reshape(2, H*W).T
+        # print(indices_B_t.shape)
+        indices_B_t = np.delete(indices_B_t, (is_patch_on_edge | is_patch_in_A_t), axis=0)
+        # print(indices_B_t.shape)
+        idx = np.random.choice(np.arange(indices_B_t.shape[0]), size=w_t*h_t)
+        phi = indices_B_t[idx].reshape(h_t, w_t, 2)
+        # print(np.max(phi, axis=1))
         B = np.array(self.B)
         B = B[indices_B[:, 0], indices_B[:, 1], :]
         u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
