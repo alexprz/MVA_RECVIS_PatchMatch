@@ -27,7 +27,7 @@ print(w, h)
 bbox = (300, 90, 750, 350)
 # bbox = (300, 90, 310, 100)
 
-mask_filled = inp.inpaint(bbox)
+mask_filled = inp.inpaint(bbox, n_iter=5, n_iter_pm=3)
 img_filled = inp.fill_hole(bbox[0], bbox[1], mask_filled)
 img_filled.show()
 exit()
