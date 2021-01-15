@@ -91,8 +91,8 @@ class Bbox():
             range1.reverse()
             range2.reverse()
 
-        for x in range1:
-            for y in range2:
+        for y in range2:
+            for x in range1:
                 yield y, x
 
     def __iter__(self):
@@ -220,8 +220,8 @@ class Inpainting():
 
         return u
 
-    def map_update(self, u, bbox_A_t, n_iter):
-        return self.patch_match(u, bbox_A_t, n_iter)
+    def map_update(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
+        return self.patch_match(u, bbox_A, bbox_A_t, n_iter, indices_B, B)
 
     def inpaint(self, bbox, n_iter, n_iter_pm):
         """Inpaint the image at the given bounding box.
@@ -254,17 +254,18 @@ class Inpainting():
 
         B = np.array(self.B)
 
-        phi = self.init_phi(H, W, bbox_A_t)
+        # phi = self.init_phi(H, W, bbox_A_t)
 
         for k in range(n_iter):
             print(f'inpainting iter {k}')
+            phi = self.map_update(whole_u, bbox_A, bbox_A_t, n_iter_pm, indices_B, B)
+
             phi_r = phi.reshape(-1, 2)
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
 
             u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
             whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
 
-            phi = self.map_update(whole_u, bbox_A_t, n_iter_pm)
 
         img = Image.fromarray(np.uint8(u))
         return img
@@ -298,7 +299,7 @@ class Inpainting():
 
         return phi
 
-    def patch_match(self, u, bbox_A_t, n_iter):
+    def patch_match(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
         # Randomly init a map phi
         H, W, _ = u.shape
 
@@ -353,7 +354,9 @@ class Inpainting():
         for k in range(1, n_iter+1):
             print(f'Patch match iter {k}')
             flip = (k % 2 == 0)
+            # flip = False
             for y, x in bbox_A_t.iterator(flip=flip):
+                # print(y, x)
                 # Propagation stage
                 # y = y_A - y0
                 # x = x_A - x0
@@ -362,33 +365,44 @@ class Inpainting():
 
                 delta = 1 if flip else -1
 
+                # print(y, x)
+
                 y1, x1 = phi[y-y0, x-x0, :]  # middle
                 if 0 <= x-x0+delta < phi.shape[1]:
                     y2, x2 = phi[y-y0, x-x0+delta, :]  # left/right
+                    x2 = np.clip(x2-delta, pr, self.bbox_B.w-pr-1).astype(int)
                 else:
-                    y2, x2 = y, x+delta  #phi[y-y0, x-x0+delta, :]  # left/right
+                    # y2, x2 = y, x+delta  #phi[y-y0, x-x0+delta, :]  # left/right
+                    y2, x2 = None, None#phi[y-y0, x-x0, :]
+                    # print("Edge left", y2, x2, y, x)
 
                 if 0 <= y-y0+delta < phi.shape[0]:
                     y3, x3 = phi[y-y0+delta, x-x0, :]  # up/down
+                    y3 = np.clip(y3-delta, pr, self.bbox_B.h-pr-1).astype(int)
                 else:
-                    y3, x3 = y+delta, x #phi[y-y0+delta, x-x0, :]  # up/down
+                    # y3, x3 = y+delta, x #phi[y-y0+delta, x-x0, :]  # up/down
+                    y3, x3 = None, None #phi[y-y0, x-x0, :]
+                    # print("Edge up", y3, x3, y, x)
 
                 patch1 = u[y1-pr:y1+pr+1, x1-pr:x1+pr+1, :]
-                patch2 = u[y2-pr:y2+pr+1, x2-pr:x2+pr+1, :]
-                patch3 = u[y3-pr:y3+pr+1, x3-pr:x3+pr+1, :]
-
                 D1 = D(patch0, patch1, flip)
-                D2 = D(patch0, patch2, flip)
-                D3 = D(patch0, patch3, flip)
+
+                if y2 is not None:
+                    patch2 = u[y2-pr:y2+pr+1, x2-pr:x2+pr+1, :]
+                    # print(y2-pr, y2+pr+1, x2-pr, x2+pr+1)
+                    D2 = D(patch0, patch2, flip)
+                if y3 is not None:
+                    patch3 = u[y3-pr:y3+pr+1, x3-pr:x3+pr+1, :]
+                    D3 = D(patch0, patch3, flip)
 
                 argmin = y1, x1
                 D_min = D1
 
-                if D2 < D_min:
+                if y2 is not None and D2 < D_min:
                     argmin = y2, x2
                     D_min = D2
 
-                if D3 < D_min:
+                if y3 is not None and D3 < D_min:
                     argmin = y3, x3
                     D_min = D3
 
@@ -400,7 +414,7 @@ class Inpainting():
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
                 k = 0
-                while True:
+                while self.alpha != 0:
                     # Radius of the search
                     radius = self.beta*self.alpha**k
 
@@ -425,6 +439,12 @@ class Inpainting():
                         D_min = D_rand
 
                     k += 1
+
+                if (y-y0) % 30 == 0 and x-x0 == 0:
+                    img_arr = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
+                    img = Image.fromarray(np.uint8(img_arr))
+                    img.show()
+
 
         return phi
 
