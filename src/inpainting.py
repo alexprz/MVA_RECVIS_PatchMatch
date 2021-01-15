@@ -2,6 +2,8 @@
 import numpy as np
 from PIL import Image, ImageDraw
 from collections.abc import Iterable
+from scipy.ndimage import gaussian_filter
+from scipy.stats import multivariate_normal
 
 
 class Bbox():
@@ -127,7 +129,7 @@ class Bbox():
 
 class Inpainting():
 
-    def __init__(self, img, patch_radius, alpha, beta):
+    def __init__(self, img, patch_radius, alpha, beta, sigma=2):
         """Init.
 
         Args:
@@ -151,6 +153,10 @@ class Inpainting():
         self.pr = patch_radius
         self.alpha = alpha
         self.beta = max(img.size[0], img.size[1]) if beta is None else beta
+        self.sigma = sigma
+
+        self.kernel = self.get_kernel()
+
 
     def patch_indices(self, flatten=False):
         n = 2*self.pr + 1
@@ -160,52 +166,47 @@ class Inpainting():
             indices = indices.reshape(-1, 2)
         return indices
 
+    def get_kernel(self):
+        pr = self.pr
+        x, y = np.mgrid[-pr:pr+1:1, -pr:pr+1:1]
+        pos = np.dstack((x, y))
+        g = multivariate_normal(mean=np.zeros(2), cov=self.sigma*np.eye(2)).pdf(pos)
+        g /= np.sum(g)
+        return g
+
     def fz(self, phi, y, x, bbox_A_t, bbox_A, indices_B, B):
         z = np.array([y, x])
-        h = self.patch_indices(flatten=True)
+        h = self.patch_indices(flatten=True)  # (p, 2)
 
         d = z[None, :] - h  # (p, 2)
-        # assert bbox_A_t.is_inside(d).all()
-        # print(d)
-        # print(phi.shape)
-        # print(d[:, 1]-bbox_A_t.x1-1)
-        # print(d[:, 0]-bbox_A_t.y1-1)
         p = phi[d[:, 0]-bbox_A_t.y1-1, d[:, 1]-bbox_A_t.x1-1]  # (p, 2)
-        # print(np.max(p[:, 0]))
-        # print(np.max(p[:, 1]))
+        p = p + h  # (p, 2)
 
-        p = p + h
+        # g = gaussian_filter(u_t, sigma=0.5)
+        g = self.kernel.flatten()
+        u_t = self.array_B[p[:, 0], p[:, 1], :]  # (p, 3)
+        u_t = np.inner(g, u_t.T)
+        # u_t = u_t.mean(axis=0)
 
-        # print(p.shape)
-        # print(h)
-        # print(np.max(p[:, 0]))
-        # print(np.max(p[:, 1]))
-        # print(self.array_B.shape)
-        u_t = self.array_B[p[:, 0], p[:, 1], :]
-        # print(u_t.shape)
-        u_t = u_t.mean(axis=0)
-
-        # print(u_t.shape)
-        # print(u_t)
         return u_t
 
         # exit()
 
-        M = (p[None, :, :] == indices_B[:, None, :]).astype(int)
-        # print(np.unique(M, return_counts=True))
-        M = M.any(axis=2)
-        M = M.sum(axis=1)
-        # print(M.shape)
-        # print(B.shape)
-        # print(np.unique(M, return_counts=True))
-        SM = M.sum()
-        # print(SM)
-        a = np.inner(M, B.T)/SM
-        # print(a.shape)
-        print(a)
-        # exit()
+        # M = (p[None, :, :] == indices_B[:, None, :]).astype(int)
+        # # print(np.unique(M, return_counts=True))
+        # M = M.any(axis=2)
+        # M = M.sum(axis=1)
+        # # print(M.shape)
+        # # print(B.shape)
+        # # print(np.unique(M, return_counts=True))
+        # SM = M.sum()
+        # # print(SM)
+        # a = np.inner(M, B.T)/SM
+        # # print(a.shape)
+        # print(a)
+        # # exit()
 
-        return a
+        # return a
 
         # print(p)
 
@@ -238,8 +239,8 @@ class Inpainting():
         bbox_A_t = bbox_A.pad(self.pr)  # extended bbox to patch radius
 
         B_masked = self.B.copy()
-        # img_draw = ImageDraw.Draw(B_masked)
-        # img_draw.rectangle(bbox, fill='black')
+        img_draw = ImageDraw.Draw(B_masked)
+        img_draw.rectangle(bbox, fill='black')
         whole_u = np.array(B_masked)
 
         W, H = self.bbox_B.size
@@ -253,14 +254,17 @@ class Inpainting():
 
         B = np.array(self.B)
 
-        for k in range(n_iter):
-            phi = self.map_update(whole_u, bbox_A_t, n_iter_pm)
+        phi = self.init_phi(H, W, bbox_A_t)
 
+        for k in range(n_iter):
+            print(f'inpainting iter {k}')
             phi_r = phi.reshape(-1, 2)
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
 
             u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
             whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
+
+            phi = self.map_update(whole_u, bbox_A_t, n_iter_pm)
 
         img = Image.fromarray(np.uint8(u))
         return img
@@ -271,10 +275,7 @@ class Inpainting():
         img.paste(filling_img, (x, y))
         return img
 
-    def patch_match(self, u, bbox_A_t, n_iter):
-        # Randomly init a map phi
-        H, W, _ = u.shape
-
+    def init_phi(self, H, W, bbox_A_t):
         is_patch_in_A_t = np.zeros((H, W)).astype(bool)
         x1, y1, x2, y2 = bbox_A_t.coords
         is_patch_in_A_t[y1:y2, x1:x2] = True
@@ -295,10 +296,57 @@ class Inpainting():
 
         phi = indices_B_t[idx].reshape(h_t, w_t, 2)
 
+        return phi
+
+    def patch_match(self, u, bbox_A_t, n_iter):
+        # Randomly init a map phi
+        H, W, _ = u.shape
+
+        # is_patch_in_A_t = np.zeros((H, W)).astype(bool)
+        # x1, y1, x2, y2 = bbox_A_t.coords
+        # is_patch_in_A_t[y1:y2, x1:x2] = True
+        # is_patch_in_A_t = is_patch_in_A_t.flatten()
+
+        # is_patch_on_edge = np.zeros((H, W)).astype(bool)
+        # is_patch_on_edge[:self.pr, :] = True
+        # is_patch_on_edge[-self.pr:, :] = True
+        # is_patch_on_edge[:, :self.pr] = True
+        # is_patch_on_edge[:, -self.pr:] = True
+        # is_patch_on_edge = is_patch_on_edge.flatten()
+
+        # indices_B_t = np.indices((H, W)).reshape(2, H*W).T
+        # indices_B_t = np.delete(indices_B_t, (is_patch_on_edge | is_patch_in_A_t), axis=0)
+
+        # w_t, h_t = bbox_A_t.size
+        # idx = np.random.choice(np.arange(indices_B_t.shape[0]), size=w_t*h_t)
+
+        # phi = indices_B_t[idx].reshape(h_t, w_t, 2)
+
+        phi = self.init_phi(H, W, bbox_A_t)
+
         pr = self.pr
 
-        def D(p1, p2):
-            return np.sum(np.power(p1 - p2, 2))
+        def D(p1, p2, flip):
+            d = np.sum(np.power(p1 - p2, 2), axis=2)
+            if flip:
+                d1 = d[pr+1:, :].flatten()
+                k1 = self.kernel[pr+1:, :].flatten()
+                d2 = d[pr, pr+1:].flatten()
+                k2 = self.kernel[pr, pr+1:].flatten()
+
+            else:
+                d1 = d[:pr, :].flatten()
+                k1 = self.kernel[:pr, :].flatten()
+                d2 = d[pr, :pr].flatten()
+                k2 = self.kernel[pr, :pr].flatten()
+
+            return np.inner(k1, d1) + np.inner(k2, d2)
+
+        # def D(p1, p2):
+        #     d = np.sum(np.power(p1 - p2, 2), axis=2).flatten()
+        #     k = self.kernel.flatten()
+
+        #     return np.inner(k, d)
 
         x0, y0, *_ = bbox_A_t.coords
         print(phi.shape)
@@ -309,7 +357,7 @@ class Inpainting():
                 # Propagation stage
                 # y = y_A - y0
                 # x = x_A - x0
-                patch0 = u[y-pr:y+pr, x-pr:x+pr, :]
+                patch0 = u[y-pr:y+pr+1, x-pr:x+pr+1, :]
                 # print(y-pr,y+pr, x-pr,x+pr)
 
                 delta = 1 if flip else -1
@@ -325,13 +373,13 @@ class Inpainting():
                 else:
                     y3, x3 = y+delta, x #phi[y-y0+delta, x-x0, :]  # up/down
 
-                patch1 = u[y1-pr:y1+pr, x1-pr:x1+pr, :]
-                patch2 = u[y2-pr:y2+pr, x2-pr:x2+pr, :]
-                patch3 = u[y3-pr:y3+pr, x3-pr:x3+pr, :]
+                patch1 = u[y1-pr:y1+pr+1, x1-pr:x1+pr+1, :]
+                patch2 = u[y2-pr:y2+pr+1, x2-pr:x2+pr+1, :]
+                patch3 = u[y3-pr:y3+pr+1, x3-pr:x3+pr+1, :]
 
-                D1 = D(patch0, patch1)
-                D2 = D(patch0, patch2)
-                D3 = D(patch0, patch3)
+                D1 = D(patch0, patch1, flip)
+                D2 = D(patch0, patch2, flip)
+                D3 = D(patch0, patch3, flip)
 
                 argmin = y1, x1
                 D_min = D1
@@ -364,10 +412,14 @@ class Inpainting():
                     eps = np.random.uniform(-1, 1, size=2)
                     y_rand, x_rand = np.clip((v0 + radius*eps).astype(int), [pr, pr], [H-pr-1, W-pr-1])
 
-                    # Check if it is better
-                    patch_rand = u[y_rand-pr:y_rand+pr, x_rand-pr:x_rand+pr, :]
+                    if bbox_A_t.is_inside([y_rand, x_rand]).any():
+                        k += 1
+                        continue
 
-                    D_rand = D(patch0, patch_rand)
+                    # Check if it is better
+                    patch_rand = u[y_rand-pr:y_rand+pr+1, x_rand-pr:x_rand+pr+1, :]
+
+                    D_rand = D(patch0, patch_rand, flip)
                     if D_rand < D_min:
                         phi[y-y0, x-x0, :] = y_rand, x_rand
                         D_min = D_rand
@@ -375,3 +427,12 @@ class Inpainting():
                     k += 1
 
         return phi
+
+    def get_masked_img(self, bbox):
+        """Get the original image with a black mask at the given bbox."""
+        x1, y1, x2, y2 = Bbox(*bbox).coords
+        img = self.B.copy()
+        img_draw = ImageDraw.Draw(img)
+        img_draw.rectangle(bbox, fill='black')
+
+        return img
