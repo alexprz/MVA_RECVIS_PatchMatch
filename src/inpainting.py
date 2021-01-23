@@ -202,7 +202,7 @@ class Inpainting():
         g /= np.sum(g)
         return g
 
-    def fz(self, phi, y, x, bbox_A_t, bbox_A, indices_B, B):
+    def fz(self, phi, y, x, bbox_A_t):
         z = np.array([y, x])
         h = self.patch_indices(flatten=True)  # (p, 2)
 
@@ -210,46 +210,22 @@ class Inpainting():
         p = phi[d[:, 0]-bbox_A_t.y1-1, d[:, 1]-bbox_A_t.x1-1]  # (p, 2)
         p = p + h  # (p, 2)
 
-        # g = gaussian_filter(u_t, sigma=0.5)
         g = self.kernel.flatten()
         u_t = self.array_B[p[:, 0], p[:, 1], :]  # (p, 3)
         u_t = np.inner(g, u_t.T)
-        # u_t = u_t.mean(axis=0)
 
         return u_t
 
-        # exit()
-
-        # M = (p[None, :, :] == indices_B[:, None, :]).astype(int)
-        # # print(np.unique(M, return_counts=True))
-        # M = M.any(axis=2)
-        # M = M.sum(axis=1)
-        # # print(M.shape)
-        # # print(B.shape)
-        # # print(np.unique(M, return_counts=True))
-        # SM = M.sum()
-        # # print(SM)
-        # a = np.inner(M, B.T)/SM
-        # # print(a.shape)
-        # print(a)
-        # # exit()
-
-        # return a
-
-        # print(p)
-
-    def image_update(self, phi, bbox_A_t, bbox_A, indices_B, B):
-
+    def image_update(self, phi, bbox_A_t, bbox_A):
         u = bbox_A.zeros(3)
 
         for i, (y, x) in enumerate(bbox_A):
-            # print(i)
-            u[y-bbox_A.y1-1, x-bbox_A.x1-1, :] = self.fz(phi, y, x, bbox_A_t, bbox_A, indices_B, B)
+            u[y-bbox_A.y1-1, x-bbox_A.x1-1, :] = self.fz(phi, y, x, bbox_A_t)
 
         return u
 
-    def map_update(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
-        return self.patch_match(u, bbox_A, bbox_A_t, n_iter, indices_B, B)
+    def map_update(self, u, bbox_A_t, n_iter):
+        return self.patch_match(u, bbox_A_t, n_iter)
 
     def inpaint(self, bbox, n_iter, n_iter_pm):
         """Inpaint the image at the given bounding box.
@@ -273,49 +249,26 @@ class Inpainting():
         img = self.B.copy()
         draw = ImageDraw.Draw(img)
 
-        # xt1, yt1, xt2, yt2 = bbox_A_t.coords
-        # img_draw.line([(xt1, yt1), (xt2, yt1)], fill=(0, 255, 0))
-        # img_draw.line([(xt1, yt1), (xt1, yt2)], fill=(0, 255, 0))
-        # img_draw.line([(xt2, yt1), (xt2, yt2)], fill=(0, 255, 0))
-        # img_draw.line([(xt1, yt2), (xt2, yt2)], fill=(0, 255, 0))
         draw.rectangle(bbox, fill='black')
         self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
         self.draw_rectangle(draw, *self.bbox_B_t.coords, color=(0, 255, 0))
 
-        # img.show()
-        # exit()
-
         whole_u = np.array(B_masked)
 
         W, H = self.bbox_B.size
-        is_patch_in_A_t = np.zeros((H, W)).astype(bool)
-        x1, y1, x2, y2 = bbox_A_t.coords
-        is_patch_in_A_t[y1:y2+1, x1:x2+1] = True
-        is_patch_in_A_t = is_patch_in_A_t.flatten()
-
-        indices_B = np.indices((H, W)).reshape(2, H*W).T
-        indices_B = np.delete(indices_B, is_patch_in_A_t, axis=0)
-
-        B = np.array(self.B)
-
-        # phi = self.init_phi(H, W, bbox_A_t)
 
         for k in range(n_iter):
             print(f'inpainting iter {k}')
-            phi = self.map_update(whole_u, bbox_A, bbox_A_t, n_iter_pm, indices_B, B)
+            phi = self.map_update(whole_u, bbox_A_t, n_iter_pm)
 
             phi_r = phi.reshape(-1, 2)
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
 
-            u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
-            # print(u.shape)
-            # exit()
+            u = self.image_update(phi, bbox_A_t, bbox_A)
+
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
-
             current_img = Image.fromarray(np.uint8(whole_u))
-            # current_img.show()
-
             draw = ImageDraw.Draw(current_img)
             for i in range(phi.shape[0]):
                 for j in range(phi.shape[1]):
@@ -326,7 +279,6 @@ class Inpainting():
             exit()
 
         current_img = Image.fromarray(np.uint8(whole_u))
-        # current_img.show()
 
         draw = ImageDraw.Draw(current_img)
         for i in range(phi.shape[0]):
@@ -398,7 +350,7 @@ class Inpainting():
             return self.valid_patch_idx_flip
         return self.valid_patch_idx
 
-    def patch_match(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
+    def patch_match(self, u, bbox_A_t, n_iter):
         # Randomly init a map phi
         H, W, _ = u.shape
 
@@ -455,20 +407,20 @@ class Inpainting():
             return np.inner(d, k)
             # exit()
             # d = np.sum(np.power(p1 - p2, 2), axis=2)
-            return np.inner(d.flatten(), self.kernel.flatten())
-            if flip:
-                d1 = d[pr+1:, :].flatten()
-                k1 = self.kernel[pr+1:, :].flatten()
-                d2 = d[pr, pr+1:].flatten()
-                k2 = self.kernel[pr, pr+1:].flatten()
+            # return np.inner(d.flatten(), self.kernel.flatten())
+            # if flip:
+            #     d1 = d[pr+1:, :].flatten()
+            #     k1 = self.kernel[pr+1:, :].flatten()
+            #     d2 = d[pr, pr+1:].flatten()
+            #     k2 = self.kernel[pr, pr+1:].flatten()
 
-            else:
-                d1 = d[:pr, :].flatten()
-                k1 = self.kernel[:pr, :].flatten()
-                d2 = d[pr, :pr].flatten()
-                k2 = self.kernel[pr, :pr].flatten()
+            # else:
+            #     d1 = d[:pr, :].flatten()
+            #     k1 = self.kernel[:pr, :].flatten()
+            #     d2 = d[pr, :pr].flatten()
+            #     k2 = self.kernel[pr, :pr].flatten()
 
-            return np.inner(k1, d1) + np.inner(k2, d2)
+            # return np.inner(k1, d1) + np.inner(k2, d2)
 
         # def D(p1, p2):
         #     d = np.sum(np.power(p1 - p2, 2), axis=2).flatten()
