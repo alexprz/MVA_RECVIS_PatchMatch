@@ -176,6 +176,15 @@ class Inpainting():
 
         self.kernel = self.get_kernel()
 
+        self.valid_patch_idx = self.compute_valid_patch_indices(flip=False)
+        self.valid_patch_idx_flip = self.compute_valid_patch_indices(flip=True)
+
+        # print(self.valid_patch_idx)
+        # print(self.valid_patch_idx_flip)
+
+        # print(self.kernel[self.valid_patch_idx])
+        # exit()
+
 
     def patch_indices(self, flatten=False):
         n = 2*self.pr + 1
@@ -258,8 +267,8 @@ class Inpainting():
         bbox_A_t = bbox_A.pad(self.pr)  # extended bbox to patch radius
 
         B_masked = self.B.copy()
-        # img_draw = ImageDraw.Draw(B_masked)
-        # img_draw.rectangle(bbox, fill='black')
+        img_draw = ImageDraw.Draw(B_masked)
+        img_draw.rectangle(bbox, fill='black')
 
         img = self.B.copy()
         draw = ImageDraw.Draw(img)
@@ -304,17 +313,17 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
 
-            # current_img = Image.fromarray(np.uint8(whole_u))
-            # # current_img.show()
-
-            # draw = ImageDraw.Draw(current_img)
-            # for i in range(phi.shape[0]):
-            #     for j in range(phi.shape[1]):
-            #         i2, j2 = phi[i, j]
-            #         self.draw_center_patch(draw, j2, i2, (255, 0, 0))
-
+            current_img = Image.fromarray(np.uint8(whole_u))
             # current_img.show()
-            # exit()
+
+            draw = ImageDraw.Draw(current_img)
+            for i in range(phi.shape[0]):
+                for j in range(phi.shape[1]):
+                    i2, j2 = phi[i, j]
+                    self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+
+            current_img.show()
+            exit()
 
         current_img = Image.fromarray(np.uint8(whole_u))
         # current_img.show()
@@ -370,6 +379,25 @@ class Inpainting():
         draw.line([(x2, y1), (x2, y2)], fill=color)
         draw.line([(x1, y2), (x2, y2)], fill=color)
 
+    def compute_valid_patch_indices(self, flip):
+        N = 2*self.pr+1
+        patch_mask = np.zeros((N, N)).astype(bool)
+
+        if flip:
+            patch_mask[self.pr+1:, :] = True
+            patch_mask[self.pr, self.pr+1:] = True
+
+        else:
+            patch_mask[:self.pr, :] = True
+            patch_mask[self.pr, :self.pr] = True
+
+        return np.where(patch_mask)
+
+    def get_valid_patch_indices(self, flip):
+        if flip:
+            return self.valid_patch_idx_flip
+        return self.valid_patch_idx
+
     def patch_match(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
         # Randomly init a map phi
         H, W, _ = u.shape
@@ -414,7 +442,20 @@ class Inpainting():
         pr = self.pr
 
         def D(p1, p2, flip):
-            d = np.sum(np.power(p1 - p2, 2), axis=2)
+            idx = self.get_valid_patch_indices(flip)
+            p1 = p1[idx]
+            p2 = p2[idx]
+            d = np.sum(np.power(p1 - p2, 2), axis=1)
+            k = self.kernel[idx]
+            # print(d)
+            # print(p1)
+            # print(p2)
+            # print(k)
+            # print(np.inner(d, k))
+            return np.inner(d, k)
+            # exit()
+            # d = np.sum(np.power(p1 - p2, 2), axis=2)
+            return np.inner(d.flatten(), self.kernel.flatten())
             if flip:
                 d1 = d[pr+1:, :].flatten()
                 k1 = self.kernel[pr+1:, :].flatten()
@@ -516,7 +557,7 @@ class Inpainting():
                 # if nb > 10:
                 #     break
 
-                # continue
+                continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
