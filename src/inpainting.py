@@ -145,27 +145,6 @@ class Bbox():
 
         return yp, xp
 
-        # if x < self.x1 or x > self.x2:
-        #     xp = x
-
-        # else:
-        #     if abs(x-self.x1) <= abs(x-self.x2):
-        #         xp = self.x1
-        #     else:
-        #         xp = self.x2
-
-        # if y < self.y1 or y > self.y2:
-        #     yp = y
-
-        # else:
-        #     if abs(y-self.y1) <= abs(y-self.y2):
-        #         yp = self.y1
-        #     else:
-        #         yp = self.y2
-
-        # return yp, xp
-
-
 
 class Inpainting():
 
@@ -316,18 +295,16 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
 
 
-            # current_img = Image.fromarray(np.uint8(whole_u))
-            # current_img.show()
-            # draw = ImageDraw.Draw(current_img)
-            # r = self.pr
-            # for i in range(phi.shape[0]):
-            #     for j in range(phi.shape[1]):
-            #         print(phi[i, j])
-            #         i2, j2 = phi[i, j]
-            #         draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
-            #         draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
-            #         # draw.point(phi[i, j], fill=(255, 0, 0))
-            # current_img.show()
+            current_img = Image.fromarray(np.uint8(whole_u))
+            current_img.show()
+
+            draw = ImageDraw.Draw(current_img)
+            for i in range(phi.shape[0]):
+                for j in range(phi.shape[1]):
+                    i2, j2 = phi[i, j]
+                    self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+
+            current_img.show()
             exit()
 
 
@@ -452,9 +429,9 @@ class Inpainting():
                 # print(y, x)
 
                 y1, x1 = phi[y-y0, x-x0, :]  # middle
-                self.draw_center_patch(draw, x1, y1, (0, 0, 255))
+                # self.draw_center_patch(draw, x1, y1, (0, 0, 255))
                 y1, x1 = bbox_A_t.outside(y1, x1)
-                self.draw_center_patch(draw, x1, y1, (0, 0, 255))
+                # self.draw_center_patch(draw, x1, y1, (0, 0, 255))
 
                 if 0 <= x-x0+delta < phi.shape[1]:
                     y2, x2 = phi[y-y0, x-x0+delta, :]  # left/right
@@ -465,7 +442,7 @@ class Inpainting():
                     # y2, x2 = y, x+delta  #phi[y-y0, x-x0+delta, :]  # left/right
                     # y2, x2 = None, None#phi[y-y0, x-x0, :]
                     # print("Edge left", y2, x2, y, x)
-                self.draw_center_patch(draw, x2, y2, (255, 0, 0))
+                # self.draw_center_patch(draw, x2, y2, (255, 0, 0))
 
                 if 0 <= y-y0+delta < phi.shape[0]:
                     y3, x3 = phi[y-y0+delta, x-x0, :]  # up/down
@@ -476,7 +453,7 @@ class Inpainting():
                     y3, x3 = bbox_A_t.outside(y+delta, x) #phi[y-y0+delta, x-x0, :]  # up/down
                     # y3, x3 = None, None #phi[y-y0, x-x0, :]
                     # print("Edge up", y3, x3, y, x)
-                self.draw_center_patch(draw, x3, y3, (0, 255, 0))
+                # self.draw_center_patch(draw, x3, y3, (0, 255, 0))
 
                 patch1 = u[y1-pr:y1+pr+1, x1-pr:x1+pr+1, :]
                 D1 = D(patch0, patch1, flip)
@@ -508,11 +485,11 @@ class Inpainting():
                 i2, j2 = argmin
                 # draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 255, 0))
                 # draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 255, 0))
-                self.draw_center_patch(draw, j2, i2, (255, 255, 0))
+                # self.draw_center_patch(draw, j2, i2, (255, 255, 0))
 
-                break
-                if nb > 10:
-                    break
+                # break
+                # if nb > 10:
+                #     break
 
                 continue
 
@@ -550,7 +527,13 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-        current_img.show()
+        # current_img.show()
+
+        # for i in range(phi.shape[0]):
+        #     for j in range(phi.shape[1]):
+        #         i2, j2 = phi[i, j]
+        #         self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+        # current_img.show()
 
         return phi
 
