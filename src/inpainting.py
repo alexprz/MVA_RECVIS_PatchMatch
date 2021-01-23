@@ -167,7 +167,7 @@ class Inpainting():
 
         self.B = img
         self.array_B = np.array(img)
-        self.bbox_B = Bbox(0, 0, img.width, img.height)
+        self.bbox_B = Bbox(0, 0, img.width-1, img.height-1)
         self.bbox_B_t = self.bbox_B.pad(-patch_radius)
         self.pr = patch_radius
         self.alpha = alpha
@@ -261,13 +261,19 @@ class Inpainting():
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
 
+        img = self.B.copy()
+        draw = ImageDraw.Draw(img)
 
-        xt1, yt1, xt2, yt2 = bbox_A_t.coords
-        img_draw.line([(xt1, yt1), (xt2, yt1)], fill=(0, 255, 0))
-        img_draw.line([(xt1, yt1), (xt1, yt2)], fill=(0, 255, 0))
-        img_draw.line([(xt2, yt1), (xt2, yt2)], fill=(0, 255, 0))
-        img_draw.line([(xt1, yt2), (xt2, yt2)], fill=(0, 255, 0))
+        # xt1, yt1, xt2, yt2 = bbox_A_t.coords
+        # img_draw.line([(xt1, yt1), (xt2, yt1)], fill=(0, 255, 0))
+        # img_draw.line([(xt1, yt1), (xt1, yt2)], fill=(0, 255, 0))
+        # img_draw.line([(xt2, yt1), (xt2, yt2)], fill=(0, 255, 0))
+        # img_draw.line([(xt1, yt2), (xt2, yt2)], fill=(0, 255, 0))
+        self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
+        self.draw_rectangle(draw, *self.bbox_B_t.coords, color=(0, 255, 0))
 
+        img.show()
+        exit()
 
         whole_u = np.array(B_masked)
 
@@ -346,6 +352,12 @@ class Inpainting():
         r = self.pr
         draw.line([x-r, y, x+r, y], fill=color)
         draw.line([x, y-r, x, y+r], fill=color)
+
+    def draw_rectangle(self, draw, x1, y1, x2, y2, color):
+        draw.line([(x1, y1), (x2, y1)], fill=color)
+        draw.line([(x1, y1), (x1, y2)], fill=color)
+        draw.line([(x2, y1), (x2, y2)], fill=color)
+        draw.line([(x1, y2), (x2, y2)], fill=color)
 
     def patch_match(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
         # Randomly init a map phi
@@ -493,7 +505,7 @@ class Inpainting():
                 # if nb > 10:
                 #     break
 
-                continue
+                # continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
