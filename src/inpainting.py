@@ -127,25 +127,43 @@ class Bbox():
         return (xy_min <= pixels) & (pixels < xy_max)
 
     def outside(self, y, x):
-        if x < self.x1 or x > self.x2:
-            xp = x
+        if x < self.x1 or x > self.x2 or y < self.y1 or y > self.y2:
+            return y, x
 
+        # Both x and y are inside
+        # Project x onto boundary
+        if abs(x-self.x1) <= abs(x-self.x2):
+            xp = self.x1 - 1
         else:
-            if abs(x-self.x1) <= abs(x-self.x2):
-                xp = self.x1
-            else:
-                xp = self.x2
+            xp = self.x2 + 1
 
-        if y < self.y1 or y > self.y2:
-            yp = y
-
+        # Project y onto boundary
+        if abs(y-self.y1) <= abs(y-self.y2):
+            yp = self.y1 - 1
         else:
-            if abs(y-self.y1) <= abs(y-self.y2):
-                yp = self.y1
-            else:
-                yp = self.y2
+            yp = self.y2 + 1
 
         return yp, xp
+
+        # if x < self.x1 or x > self.x2:
+        #     xp = x
+
+        # else:
+        #     if abs(x-self.x1) <= abs(x-self.x2):
+        #         xp = self.x1
+        #     else:
+        #         xp = self.x2
+
+        # if y < self.y1 or y > self.y2:
+        #     yp = y
+
+        # else:
+        #     if abs(y-self.y1) <= abs(y-self.y2):
+        #         yp = self.y1
+        #     else:
+        #         yp = self.y2
+
+        # return yp, xp
 
 
 
