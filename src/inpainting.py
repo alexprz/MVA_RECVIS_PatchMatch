@@ -301,7 +301,7 @@ class Inpainting():
             # current_img = Image.fromarray(np.uint8(whole_u))
             # current_img.show()
             # draw = ImageDraw.Draw(current_img)
-            # r = 5
+            # r = self.pr
             # for i in range(phi.shape[0]):
             #     for j in range(phi.shape[1]):
             #         print(phi[i, j])
@@ -310,6 +310,7 @@ class Inpainting():
             #         draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
             #         # draw.point(phi[i, j], fill=(255, 0, 0))
             # current_img.show()
+            exit()
 
 
         img = Image.fromarray(np.uint8(u))
@@ -344,6 +345,11 @@ class Inpainting():
 
         return phi
 
+    def draw_center_patch(self, draw, x, y, color):
+        r = self.pr
+        draw.line([x-r, y, x+r, y], fill=color)
+        draw.line([x, y-r, x, y+r], fill=color)
+
     def patch_match(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
         # Randomly init a map phi
         H, W, _ = u.shape
@@ -373,16 +379,17 @@ class Inpainting():
         current_img = Image.fromarray(np.uint8(u))
         current_img.show()
         draw = ImageDraw.Draw(current_img)
-        r = self.pr
+        # r = self.pr
         for i in range(phi.shape[0]):
             for j in range(phi.shape[1]):
-                print(phi[i, j])
+                # print(phi[i, j])
                 i2, j2 = phi[i, j]
-                draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
-                draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
+                # draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
+                # draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
+                # self.draw_center_patch(draw, j2, i2, (255, 0, 0))
                 # draw.point(phi[i, j], fill=(255, 0, 0))
         current_img.show()
-        exit()
+        # exit()
 
         pr = self.pr
 
@@ -414,7 +421,7 @@ class Inpainting():
             print(f'Patch match iter {k}')
             flip = (k % 2 == 0)
             # flip = False
-            for y, x in bbox_A_t.iterator(flip=flip):
+            for nb, (y, x) in enumerate(bbox_A_t.iterator(flip=flip)):
                 # print(y, x)
                 # Propagation stage
                 # y = y_A - y0
@@ -427,7 +434,10 @@ class Inpainting():
                 # print(y, x)
 
                 y1, x1 = phi[y-y0, x-x0, :]  # middle
+                self.draw_center_patch(draw, x1, y1, (0, 0, 255))
                 y1, x1 = bbox_A_t.outside(y1, x1)
+                self.draw_center_patch(draw, x1, y1, (0, 0, 255))
+
                 if 0 <= x-x0+delta < phi.shape[1]:
                     y2, x2 = phi[y-y0, x-x0+delta, :]  # left/right
                     x2 = np.clip(x2-delta, pr, self.bbox_B.w-pr-1).astype(int)
@@ -437,6 +447,7 @@ class Inpainting():
                     # y2, x2 = y, x+delta  #phi[y-y0, x-x0+delta, :]  # left/right
                     # y2, x2 = None, None#phi[y-y0, x-x0, :]
                     # print("Edge left", y2, x2, y, x)
+                self.draw_center_patch(draw, x2, y2, (255, 0, 0))
 
                 if 0 <= y-y0+delta < phi.shape[0]:
                     y3, x3 = phi[y-y0+delta, x-x0, :]  # up/down
@@ -447,6 +458,7 @@ class Inpainting():
                     y3, x3 = bbox_A_t.outside(y+delta, x) #phi[y-y0+delta, x-x0, :]  # up/down
                     # y3, x3 = None, None #phi[y-y0, x-x0, :]
                     # print("Edge up", y3, x3, y, x)
+                self.draw_center_patch(draw, x3, y3, (0, 255, 0))
 
                 patch1 = u[y1-pr:y1+pr+1, x1-pr:x1+pr+1, :]
                 D1 = D(patch0, patch1, flip)
@@ -474,6 +486,17 @@ class Inpainting():
                 assert self.pr <= x_argmin < self.bbox_B.w - self.pr
                 assert self.pr <= y_argmin < self.bbox_B.h - self.pr
                 phi[y-y0, x-x0, :] = argmin
+
+                i2, j2 = argmin
+                # draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 255, 0))
+                # draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 255, 0))
+                self.draw_center_patch(draw, j2, i2, (255, 255, 0))
+
+                break
+                if nb > 10:
+                    break
+
+                continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
@@ -509,6 +532,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
+        current_img.show()
 
         return phi
 
