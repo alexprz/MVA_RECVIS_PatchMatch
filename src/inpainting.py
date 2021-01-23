@@ -35,12 +35,12 @@ class Bbox():
     @property
     def w(self):
         """Get box width."""
-        return self.x2 - self.x1
+        return self.x2 - self.x1 + 1
 
     @property
     def h(self):
         """Get box height."""
-        return self.y2 - self.y1
+        return self.y2 - self.y1 + 1
 
     @property
     def size(self):
@@ -84,8 +84,8 @@ class Bbox():
 
     def iterator(self, flip=False):
         """Iterate over the pixels inside the bbox."""
-        range1 = list(range(self.x1, self.x2))
-        range2 = list(range(self.y1, self.y2))
+        range1 = list(range(self.x1, self.x2+1))
+        range2 = list(range(self.y1, self.y2+1))
 
         if flip:
             range1.reverse()
@@ -274,7 +274,7 @@ class Inpainting():
         W, H = self.bbox_B.size
         is_patch_in_A_t = np.zeros((H, W)).astype(bool)
         x1, y1, x2, y2 = bbox_A_t.coords
-        is_patch_in_A_t[y1:y2, x1:x2] = True
+        is_patch_in_A_t[y1:y2+1, x1:x2+1] = True
         is_patch_in_A_t = is_patch_in_A_t.flatten()
 
         indices_B = np.indices((H, W)).reshape(2, H*W).T
@@ -292,11 +292,13 @@ class Inpainting():
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
 
             u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
-            whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
+            # print(u.shape)
+            # exit()
+            whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
 
             current_img = Image.fromarray(np.uint8(whole_u))
-            current_img.show()
+            # current_img.show()
 
             draw = ImageDraw.Draw(current_img)
             for i in range(phi.shape[0]):
@@ -372,7 +374,7 @@ class Inpainting():
         phi = self.init_phi(H, W, bbox_A_t)
 
         current_img = Image.fromarray(np.uint8(u))
-        current_img.show()
+        # current_img.show()
         draw = ImageDraw.Draw(current_img)
         # r = self.pr
         for i in range(phi.shape[0]):
@@ -383,7 +385,7 @@ class Inpainting():
                 # draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
                 # self.draw_center_patch(draw, j2, i2, (255, 0, 0))
                 # draw.point(phi[i, j], fill=(255, 0, 0))
-        current_img.show()
+        # current_img.show()
         # exit()
 
         pr = self.pr
