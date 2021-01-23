@@ -126,6 +126,28 @@ class Bbox():
 
         return (xy_min <= pixels) & (pixels < xy_max)
 
+    def outside(self, y, x):
+        if x < self.x1 or x > self.x2:
+            xp = x
+
+        else:
+            if abs(x-self.x1) <= abs(x-self.x2):
+                xp = self.x1
+            else:
+                xp = self.x2
+
+        if y < self.y1 or y > self.y2:
+            yp = y
+
+        else:
+            if abs(y-self.y1) <= abs(y-self.y2):
+                yp = self.y1
+            else:
+                yp = self.y2
+
+        return yp, xp
+
+
 
 class Inpainting():
 
@@ -368,20 +390,25 @@ class Inpainting():
                 # print(y, x)
 
                 y1, x1 = phi[y-y0, x-x0, :]  # middle
+                y1, x1 = bbox_A_t.outside(y1, x1)
                 if 0 <= x-x0+delta < phi.shape[1]:
                     y2, x2 = phi[y-y0, x-x0+delta, :]  # left/right
                     x2 = np.clip(x2-delta, pr, self.bbox_B.w-pr-1).astype(int)
+                    y2, x2 = bbox_A_t.outside(y2, x2)
                 else:
+                    y2, x2 = bbox_A_t.outside(y, x+delta)  #phi[y-y0, x-x0+delta, :]  # left/right
                     # y2, x2 = y, x+delta  #phi[y-y0, x-x0+delta, :]  # left/right
-                    y2, x2 = None, None#phi[y-y0, x-x0, :]
+                    # y2, x2 = None, None#phi[y-y0, x-x0, :]
                     # print("Edge left", y2, x2, y, x)
 
                 if 0 <= y-y0+delta < phi.shape[0]:
                     y3, x3 = phi[y-y0+delta, x-x0, :]  # up/down
                     y3 = np.clip(y3-delta, pr, self.bbox_B.h-pr-1).astype(int)
+                    y3, x3 = bbox_A_t.outside(y3, x3)
                 else:
                     # y3, x3 = y+delta, x #phi[y-y0+delta, x-x0, :]  # up/down
-                    y3, x3 = None, None #phi[y-y0, x-x0, :]
+                    y3, x3 = bbox_A_t.outside(y+delta, x) #phi[y-y0+delta, x-x0, :]  # up/down
+                    # y3, x3 = None, None #phi[y-y0, x-x0, :]
                     # print("Edge up", y3, x3, y, x)
 
                 patch1 = u[y1-pr:y1+pr+1, x1-pr:x1+pr+1, :]
@@ -440,10 +467,10 @@ class Inpainting():
 
                     k += 1
 
-                if (y-y0) % 30 == 0 and x-x0 == 0:
-                    img_arr = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
-                    img = Image.fromarray(np.uint8(img_arr))
-                    img.show()
+                # if (y-y0) % 30 == 0 and x-x0 == 0:
+                #     img_arr = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
+                #     img = Image.fromarray(np.uint8(img_arr))
+                #     img.show()
 
 
         return phi
