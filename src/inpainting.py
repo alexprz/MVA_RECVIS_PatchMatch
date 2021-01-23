@@ -263,6 +263,15 @@ class Inpainting():
         B_masked = self.B.copy()
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
+
+
+        xt1, yt1, xt2, yt2 = bbox_A_t.coords
+        img_draw.line([(xt1, yt1), (xt2, yt1)], fill=(0, 255, 0))
+        img_draw.line([(xt1, yt1), (xt1, yt2)], fill=(0, 255, 0))
+        img_draw.line([(xt2, yt1), (xt2, yt2)], fill=(0, 255, 0))
+        img_draw.line([(xt1, yt2), (xt2, yt2)], fill=(0, 255, 0))
+
+
         whole_u = np.array(B_masked)
 
         W, H = self.bbox_B.size
@@ -289,18 +298,18 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
 
 
-            current_img = Image.fromarray(np.uint8(whole_u))
-            current_img.show()
-            draw = ImageDraw.Draw(current_img)
-            r = 5
-            for i in range(phi.shape[0]):
-                for j in range(phi.shape[1]):
-                    print(phi[i, j])
-                    i2, j2 = phi[i, j]
-                    draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
-                    draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
-                    # draw.point(phi[i, j], fill=(255, 0, 0))
-            current_img.show()
+            # current_img = Image.fromarray(np.uint8(whole_u))
+            # current_img.show()
+            # draw = ImageDraw.Draw(current_img)
+            # r = 5
+            # for i in range(phi.shape[0]):
+            #     for j in range(phi.shape[1]):
+            #         print(phi[i, j])
+            #         i2, j2 = phi[i, j]
+            #         draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
+            #         draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
+            #         # draw.point(phi[i, j], fill=(255, 0, 0))
+            # current_img.show()
 
 
         img = Image.fromarray(np.uint8(u))
@@ -360,6 +369,20 @@ class Inpainting():
         # phi = indices_B_t[idx].reshape(h_t, w_t, 2)
 
         phi = self.init_phi(H, W, bbox_A_t)
+
+        current_img = Image.fromarray(np.uint8(u))
+        current_img.show()
+        draw = ImageDraw.Draw(current_img)
+        r = self.pr
+        for i in range(phi.shape[0]):
+            for j in range(phi.shape[1]):
+                print(phi[i, j])
+                i2, j2 = phi[i, j]
+                draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
+                draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
+                # draw.point(phi[i, j], fill=(255, 0, 0))
+        current_img.show()
+        exit()
 
         pr = self.pr
 
