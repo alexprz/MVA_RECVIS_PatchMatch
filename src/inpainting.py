@@ -289,6 +289,20 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
 
 
+            current_img = Image.fromarray(np.uint8(whole_u))
+            current_img.show()
+            draw = ImageDraw.Draw(current_img)
+            r = 5
+            for i in range(phi.shape[0]):
+                for j in range(phi.shape[1]):
+                    print(phi[i, j])
+                    i2, j2 = phi[i, j]
+                    draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
+                    draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
+                    # draw.point(phi[i, j], fill=(255, 0, 0))
+            current_img.show()
+
+
         img = Image.fromarray(np.uint8(u))
         return img
 
