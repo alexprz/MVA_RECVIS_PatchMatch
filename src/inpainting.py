@@ -324,7 +324,7 @@ class Inpainting():
     def init_phi(self, H, W, bbox_A_t):
         is_patch_in_A_t = np.zeros((H, W)).astype(bool)
         x1, y1, x2, y2 = bbox_A_t.coords
-        is_patch_in_A_t[y1:y2, x1:x2] = True
+        is_patch_in_A_t[y1:y2+1, x1:x2+1] = True
         is_patch_in_A_t = is_patch_in_A_t.flatten()
 
         is_patch_on_edge = np.zeros((H, W)).astype(bool)
