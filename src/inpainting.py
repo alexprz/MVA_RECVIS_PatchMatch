@@ -258,8 +258,8 @@ class Inpainting():
         bbox_A_t = bbox_A.pad(self.pr)  # extended bbox to patch radius
 
         B_masked = self.B.copy()
-        img_draw = ImageDraw.Draw(B_masked)
-        img_draw.rectangle(bbox, fill='black')
+        # img_draw = ImageDraw.Draw(B_masked)
+        # img_draw.rectangle(bbox, fill='black')
 
         img = self.B.copy()
         draw = ImageDraw.Draw(img)
@@ -269,11 +269,12 @@ class Inpainting():
         # img_draw.line([(xt1, yt1), (xt1, yt2)], fill=(0, 255, 0))
         # img_draw.line([(xt2, yt1), (xt2, yt2)], fill=(0, 255, 0))
         # img_draw.line([(xt1, yt2), (xt2, yt2)], fill=(0, 255, 0))
+        draw.rectangle(bbox, fill='black')
         self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
         self.draw_rectangle(draw, *self.bbox_B_t.coords, color=(0, 255, 0))
 
-        img.show()
-        exit()
+        # img.show()
+        # exit()
 
         whole_u = np.array(B_masked)
 
@@ -303,18 +304,28 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
 
-            current_img = Image.fromarray(np.uint8(whole_u))
+            # current_img = Image.fromarray(np.uint8(whole_u))
+            # # current_img.show()
+
+            # draw = ImageDraw.Draw(current_img)
+            # for i in range(phi.shape[0]):
+            #     for j in range(phi.shape[1]):
+            #         i2, j2 = phi[i, j]
+            #         self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+
             # current_img.show()
+            # exit()
 
-            draw = ImageDraw.Draw(current_img)
-            for i in range(phi.shape[0]):
-                for j in range(phi.shape[1]):
-                    i2, j2 = phi[i, j]
-                    self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+        current_img = Image.fromarray(np.uint8(whole_u))
+        # current_img.show()
 
-            current_img.show()
-            exit()
+        draw = ImageDraw.Draw(current_img)
+        for i in range(phi.shape[0]):
+            for j in range(phi.shape[1]):
+                i2, j2 = phi[i, j]
+                self.draw_center_patch(draw, j2, i2, (255, 0, 0))
 
+        current_img.show()
 
         img = Image.fromarray(np.uint8(u))
         return img
