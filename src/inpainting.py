@@ -121,10 +121,15 @@ class Bbox():
         x2 = self.x2*np.ones(n)
         y2 = self.y2*np.ones(n)
 
-        xy_min = np.stack((y1, x1), axis=1)
-        xy_max = np.stack((y2, x2), axis=1)
+        y = pixels[:, 0]
+        x = pixels[:, 1]
 
-        return (xy_min <= pixels) & (pixels < xy_max)
+        return (y >= y1) & (y <= y2) & (x >= x1) & (x <= x2)
+
+        # xy_min = np.stack((y1, x1), axis=1)
+        # xy_max = np.stack((y2, x2), axis=1)
+
+        # return (xy_min <= pixels) & (pixels < xy_max)
 
     def outside(self, y, x):
         if x < self.x1 or x > self.x2 or y < self.y1 or y > self.y2:
@@ -216,16 +221,17 @@ class Inpainting():
 
         return u_t
 
-    def image_update(self, phi, bbox_A_t, bbox_A):
+    def image_update(self, phi, bbox_A):
         u = bbox_A.zeros(3)
+        bbox_A_t = bbox_A.pad(self.pr)
 
-        for i, (y, x) in enumerate(bbox_A):
+        for y, x in bbox_A:
             u[y-bbox_A.y1-1, x-bbox_A.x1-1, :] = self.fz(phi, y, x, bbox_A_t)
 
         return u
 
-    def map_update(self, u, bbox_A_t, n_iter):
-        return self.patch_match(u, bbox_A_t, n_iter)
+    def map_update(self, u, bbox_A, n_iter):
+        return self.patch_match(u, bbox_A, n_iter)
 
     def inpaint(self, bbox, n_iter, n_iter_pm):
         """Inpaint the image at the given bounding box.
@@ -259,12 +265,12 @@ class Inpainting():
 
         for k in range(n_iter):
             print(f'inpainting iter {k}')
-            phi = self.map_update(whole_u, bbox_A_t, n_iter_pm)
+            phi = self.map_update(whole_u, bbox_A, n_iter_pm)
 
             phi_r = phi.reshape(-1, 2)
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
 
-            u = self.image_update(phi, bbox_A_t, bbox_A)
+            u = self.image_update(phi, bbox_A)
 
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
@@ -350,7 +356,7 @@ class Inpainting():
             return self.valid_patch_idx_flip
         return self.valid_patch_idx
 
-    def patch_match(self, u, bbox_A_t, n_iter):
+    def patch_match(self, u, bbox_A, n_iter):
         # Randomly init a map phi
         H, W, _ = u.shape
 
@@ -374,6 +380,7 @@ class Inpainting():
 
         # phi = indices_B_t[idx].reshape(h_t, w_t, 2)
 
+        bbox_A_t = bbox_A.pad(self.pr)
         phi = self.init_phi(H, W, bbox_A_t)
 
         current_img = Image.fromarray(np.uint8(u))
@@ -399,11 +406,6 @@ class Inpainting():
             p2 = p2[idx]
             d = np.sum(np.power(p1 - p2, 2), axis=1)
             k = self.kernel[idx]
-            # print(d)
-            # print(p1)
-            # print(p2)
-            # print(k)
-            # print(np.inner(d, k))
             return np.inner(d, k)
             # exit()
             # d = np.sum(np.power(p1 - p2, 2), axis=2)
@@ -429,7 +431,7 @@ class Inpainting():
         #     return np.inner(k, d)
 
         x0, y0, *_ = bbox_A_t.coords
-        print(phi.shape)
+
         for k in range(1, n_iter+1):
             print(f'Patch match iter {k}')
             flip = (k % 2 == 0)
@@ -509,7 +511,12 @@ class Inpainting():
                 # if nb > 10:
                 #     break
 
-                continue
+                if (y-y0) % 30 == 0 and x-x0 == 0:
+                    img_arr = self.image_update(phi, bbox_A)
+                    img = Image.fromarray(np.uint8(img_arr))
+                    img.show()
+
+                # continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
@@ -530,6 +537,8 @@ class Inpainting():
                         k += 1
                         continue
 
+                    self.draw_center_patch(draw, x_rand, y_rand, (255, 0, 255))
+
                     # Check if it is better
                     patch_rand = u[y_rand-pr:y_rand+pr+1, x_rand-pr:x_rand+pr+1, :]
 
@@ -545,7 +554,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-        # current_img.show()
+        current_img.show()
 
         # for i in range(phi.shape[0]):
         #     for j in range(phi.shape[1]):
