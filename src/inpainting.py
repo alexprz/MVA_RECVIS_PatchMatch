@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 from collections.abc import Iterable
 from scipy.ndimage import gaussian_filter
 from scipy.stats import multivariate_normal
+import argparse
 
 from evaluate import Examiner
 
@@ -357,11 +358,11 @@ class Inpainting():
         whole_u = np.array(B_masked)
         whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u_init
         current_img = Image.fromarray(np.uint8(whole_u))
-        current_img.show()
+        # current_img.show()
 
         W, H = self.bbox_B.size
 
-        for k in range(n_iter):
+        for k in range(1, n_iter+1):
             print(f'inpainting iter {k}')
             phi = self.map_update(whole_u, bbox_A, n_iter_pm)
 
@@ -373,11 +374,11 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
             current_img = Image.fromarray(np.uint8(whole_u))
-            draw = ImageDraw.Draw(current_img)
-            for i in range(phi.shape[0]):
-                for j in range(phi.shape[1]):
-                    i2, j2 = phi[i, j]
-                    self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+            # draw = ImageDraw.Draw(current_img)
+            # for i in range(phi.shape[0]):
+            #     for j in range(phi.shape[1]):
+            #         i2, j2 = phi[i, j]
+            #         self.draw_center_patch(draw, j2, i2, (255, 0, 0))
 
             current_img.show()
 
@@ -650,7 +651,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-                continue
+                # continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
@@ -722,18 +723,40 @@ class Inpainting():
 
 
 if __name__ == '__main__':
-    ex = Examiner(root='landscapes')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('root', type=str,
+                        help='Folder containing the subfolders to evaluate.')
+    parser.add_argument('id', type=int, default=0,
+                        help='Id of the image to inpaint.')
+    parser.add_argument('--alpha', type=float, default=0.5,
+                        help='Decay ratio of the random search.')
+    parser.add_argument('--beta', type=float, default=None,
+                        help='Range of the random search.')
+    parser.add_argument('--sigma', type=float, default=0.2,
+                        help='Width of the gaussian kernel.')
+    parser.add_argument('--pr', type=int, default=2,
+                        help='Patch radius (A 0-radius patch is a pixel).')
+    parser.add_argument('--n', type=int, default=2,
+                        help='Number of inpainting iterations.')
+    parser.add_argument('--n-pm', type=int, default=2,
+                        help='Number of PatchMatch iterations.')
 
-    for path in ex.img_folder_paths:
-        print(f'Inpainting "{path}"')
-        img = Image.open(os.path.join(path, ex.img_filename))
-        mask = Image.open(os.path.join(path, ex.mask_filename))
+    args = parser.parse_args()
 
-        bbox = Bbox.from_mask(mask, keep_true=False)
+    ex = Examiner(root=args.root)
 
-        inp = Inpainting(img, patch_radius=7, alpha=0.1, beta=None, sigma=0.5)
+    # for path in ex.img_folder_paths:
+    path = ex.img_folder_paths[0]
+    print(f'Inpainting "{path}"')
+    img = Image.open(os.path.join(path, ex.img_filename))
+    mask = Image.open(os.path.join(path, ex.mask_filename))
 
-        inpaint = inp.inpaint(bbox.coords, n_iter=0, n_iter_pm=2)
-        img_inpainted = inp.fill_hole(bbox[0], bbox[1], inpaint)
-        img_inpainted.save(os.path.join(path, f'inpainted.{ex.ext}'))
+    bbox = Bbox.from_mask(mask, keep_true=False)
+
+    inp = Inpainting(img, patch_radius=args.pr, alpha=args.alpha, beta=args.beta, sigma=args.sigma)
+
+    inpaint = inp.inpaint(bbox.coords, n_iter=args.n, n_iter_pm=args.n_pm)
+    img_inpainted = inp.fill_hole(bbox[0], bbox[1], inpaint)
+    img_inpainted.save(os.path.join(path, f'inpainted.{ex.ext}'))
+
 
