@@ -249,8 +249,8 @@ class Inpainting():
         bbox_A_t = bbox_A.pad(self.pr)  # extended bbox to patch radius
 
         B_masked = self.B.copy()
-        img_draw = ImageDraw.Draw(B_masked)
-        img_draw.rectangle(bbox, fill='black')
+        # img_draw = ImageDraw.Draw(B_masked)
+        # img_draw.rectangle(bbox, fill='black')
 
         img = self.B.copy()
         draw = ImageDraw.Draw(img)
@@ -272,7 +272,7 @@ class Inpainting():
 
             u = self.image_update(phi, bbox_A)
 
-            whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
+            whole_u[bbox_A.y1-1:bbox_A.y2, bbox_A.x1-1:bbox_A.x2, :] = u
 
             current_img = Image.fromarray(np.uint8(whole_u))
             draw = ImageDraw.Draw(current_img)
@@ -285,13 +285,16 @@ class Inpainting():
 
         current_img = Image.fromarray(np.uint8(whole_u))
 
-        draw = ImageDraw.Draw(current_img)
-        for i in range(phi.shape[0]):
-            for j in range(phi.shape[1]):
-                i2, j2 = phi[i, j]
-                self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+        # draw = ImageDraw.Draw(current_img)
+        # self.draw_rectangle(draw, *bbox_A.coords, color=(0, 255, 0))
 
-        current_img.show()
+        # current_img.show()
+        # for i in range(phi.shape[0]):
+        #     for j in range(phi.shape[1]):
+        #         i2, j2 = phi[i, j]
+                # self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+
+        # current_img.show()
 
         img = Image.fromarray(np.uint8(u))
         return img
@@ -549,7 +552,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-                continue
+                # continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
