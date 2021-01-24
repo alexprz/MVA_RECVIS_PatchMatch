@@ -69,6 +69,7 @@ class Examiner():
 
     @staticmethod
     def SNR(img, img_inpainted, mask=None):
+        """Compute singal to noise ratio."""
         img = np.array(img)
         img_inpainted = np.array(img_inpainted)
 
