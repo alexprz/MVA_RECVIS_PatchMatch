@@ -4,6 +4,7 @@ from PIL import Image
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import KDTree
+import argparse
 
 from time import time
 
@@ -45,7 +46,7 @@ class Examiner():
 
             # Check if required files are present
             if not self.required_filenames.issubset(filenames):
-                print(f'Warning: dir {folder} ignored because doesnt contain '
+                print(f'Warning: dir "{folder}"" ignored because doesnt contain '
                       f'the required filenames {self.required_filenames}.')
                 continue
 
@@ -53,7 +54,7 @@ class Examiner():
 
         return img_folder_paths
 
-    def evaluate(self):
+    def evaluate(self, pr=2, stride_out=5, stride_in=2, compute_completeness=False):
 
         rows = []
 
@@ -68,22 +69,30 @@ class Examiner():
             PSNR = self.PSNR(img, inpainted, mask=None)
             PSNR_mask = self.PSNR(img, inpainted, mask=mask)
 
-            D_coherence, D_complete = self.D_BDS(img, inpainted, mask, 2)
-            D_DBS = D_coherence + D_complete
+            D_coherence, D_complete = self.D_BDS(img, inpainted, mask, pr, stride_out, stride_in, compute_completeness)
 
-            row = [path, SNR, SNR_mask, PSNR, PSNR_mask, D_coherence, D_complete, D_DBS]
+            row = [path, SNR, SNR_mask, PSNR, PSNR_mask, D_coherence]
+            if compute_completeness:
+                D_DBS = D_coherence + D_complete
+                row.append(D_complete)
+                row.append(D_DBS)
+
             rows.append(row)
 
-        return pd.DataFrame(rows, columns=[
+        cols = [
             'path',
             'SNR',
             'SNR_mask_only',
             'PSNR',
             'PSNR_mask_only',
             'D_coherence',
-            'D_complete',
-            'D_DBS',
-        ])
+        ]
+
+        if compute_completeness:
+            cols.apppend('D_complete')
+            cols.append('D_DBS')
+
+        return pd.DataFrame(rows, columns=cols)
 
     @staticmethod
     def SNR(img, img_inpainted, mask=None):
@@ -128,7 +137,7 @@ class Examiner():
         return PSNR
 
     @staticmethod
-    def D_BDS(img, img_inpainted, mask, pr, stride_out=5, stride_in=2):
+    def D_BDS(img, img_inpainted, mask, pr, stride_out, stride_in, compute_completeness):
         """Compute coherence & complete dist defined in PatchMatch paper."""
         img = np.array(img).astype(np.uint8)
         img_inpainted = np.array(img_inpainted).astype(np.uint8)
@@ -177,26 +186,48 @@ class Examiner():
         print('\tFinding nearest neighbors of patches inside inpainting area...')
         t0 = time()
         D_coherence = kdtree.query(patches_in_T)[0]
+        D_coherence = np.mean(D_coherence)
         print(f'\tDone {time() - t0:.2f}s')
 
-        # Completeness distance
-        kdtree = KDTree(patches_in_T)
+        if compute_completeness:
+            # Completeness distance
+            kdtree = KDTree(patches_in_T)
 
-        print('\tFinding nearest neighbors of patches outside inpainting area...')
-        t0 = time()
-        D_complete = kdtree.query(patches_in_S)[0]
-        print(f'\tDone {time() - t0:.2f}s')
+            print('\tFinding nearest neighbors of patches outside inpainting area...')
+            t0 = time()
+            D_complete = kdtree.query(patches_in_S)[0]
+            print(f'\tDone {time() - t0:.2f}s')
 
-        return np.mean(D_coherence), np.mean(D_complete)
+            D_complete = np.mean(D_complete)
+
+        else:
+            D_complete = None
+
+        return D_coherence, D_complete
 
 
 if __name__ == '__main__':
-    root = os.path.join('to_evaluate')
-    df = Examiner(root=root).evaluate()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('root', type=str,
+                        help='Folder containing the subfolders to evaluate.')
+    parser.add_argument('--ext', type=str, default='jpg',
+                        help='Image extension.')
+    parser.add_argument('--stride-in', type=int, default=2,
+                        help='Stride inside the inpainting area.')
+    parser.add_argument('--stride-out', type=int, default=5,
+                        help='Stride outside the inpainting area.')
+    parser.add_argument('--pr', type=int, default=2,
+                        help='Patch radius (A 0-radius patch is a pixel).')
+    parser.add_argument('--complete', nargs='?', type=bool, const=True,
+                        help='Whether to compute the completeness distance.')
 
-    df.to_csv(root+'results.csv')
-    df.to_latex(root+'results.tex')
-    df.to_pickle(root+'results.pickle')
+    args = parser.parse_args()
+
+    root = os.path.join(args.root)
+    df = Examiner(root=root, ext=args.ext).evaluate(args.pr, args.stride_in, args.stride_out, args.complete)
+
+    df.to_csv(os.path.join(root, 'results.csv'))
+    df.to_latex(os.path.join(root, 'results.tex'))
+    df.to_pickle(os.path.join(root, 'results.pickle'))
 
     print(df)
-
