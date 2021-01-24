@@ -4,6 +4,7 @@ from PIL import Image
 import pandas as pd
 import numpy as np
 from sklearn.neighbors import KDTree
+import argparse
 
 from time import time
 
@@ -31,6 +32,8 @@ class Examiner():
 
         self.img_folder_paths = self._retrieve_paths()
 
+        print(f'{len(self.img_folder_paths)} images found.')
+
     def _retrieve_paths(self):
         walk = os.walk(self.root)
 
@@ -43,7 +46,7 @@ class Examiner():
 
             # Check if required files are present
             if not self.required_filenames.issubset(filenames):
-                print(f'Warning: dir {folder} ignored because doesnt contain '
+                print(f'Warning: dir "{folder}"" ignored because doesnt contain '
                       f'the required filenames {self.required_filenames}.')
                 continue
 
@@ -51,12 +54,12 @@ class Examiner():
 
         return img_folder_paths
 
-    def evaluate(self):
+    def evaluate(self, pr=2, stride_out=5, stride_in=2, compute_completeness=False):
 
         rows = []
 
         for path in self.img_folder_paths:
-            print(f'Evaluating {path}')
+            print(f'Evaluating "{path}"')
             img = Image.open(os.path.join(path, self.img_filename))
             mask = Image.open(os.path.join(path, self.mask_filename))
             inpainted = Image.open(os.path.join(path, self.inpainted_filename))
@@ -66,19 +69,30 @@ class Examiner():
             PSNR = self.PSNR(img, inpainted, mask=None)
             PSNR_mask = self.PSNR(img, inpainted, mask=mask)
 
-            D_coherence = self.D_coherence(img, inpainted, mask, 2)
+            D_coherence, D_complete = self.D_BDS(img, inpainted, mask, pr, stride_out, stride_in, compute_completeness)
 
             row = [path, SNR, SNR_mask, PSNR, PSNR_mask, D_coherence]
+            if compute_completeness:
+                D_DBS = D_coherence + D_complete
+                row.append(D_complete)
+                row.append(D_DBS)
+
             rows.append(row)
 
-        return pd.DataFrame(rows, columns=[
+        cols = [
             'path',
             'SNR',
             'SNR_mask_only',
             'PSNR',
             'PSNR_mask_only',
             'D_coherence',
-        ])
+        ]
+
+        if compute_completeness:
+            cols.apppend('D_complete')
+            cols.append('D_DBS')
+
+        return pd.DataFrame(rows, columns=cols)
 
     @staticmethod
     def SNR(img, img_inpainted, mask=None):
@@ -123,98 +137,97 @@ class Examiner():
         return PSNR
 
     @staticmethod
-    def D_coherence(img, img_inpainted, mask, pr):
+    def D_BDS(img, img_inpainted, mask, pr, stride_out, stride_in, compute_completeness):
+        """Compute coherence & complete dist defined in PatchMatch paper."""
         img = np.array(img).astype(np.uint8)
         img_inpainted = np.array(img_inpainted).astype(np.uint8)
         mask = np.array(mask).astype(bool)
-
         idx = np.where(mask)
 
-        D = 0
-
-        # Build the KDTree
-        N = (2*pr+1)**2
+        n = 2*pr+1
+        N = n**2
 
         H, W, C = img.shape
-
-        print('Retrieving patches outside inpainting area...')
-        patches_in_S = np.zeros((H, W, N, C))
-
-        for y in range(pr, H-pr):
-            for x in range(pr, W-pr):
-                patches_in_S[y, x, :, :] = img[y-pr:y+pr+1, x-pr:x+pr+1, :].reshape(N, -1)
-
-        # patches_in_S = [[img[y-pr:y+pr+1, x-pr:x+pr+1, :] for y in range(H)] for x in range(img.shape[1])]
-
-        # patches_in_S = np.array(patches_in_S)
-
-        patches_in_S = patches_in_S.reshape(H*W, N*C)
-        # print(patches_in_S.shape)
-
-        print('Building kdtree...')
-        kdtree = KDTree(patches_in_S)
-
-        del patches_in_S
-
-        # print(patches_in_S.shape)
-        # exit()
 
         h = max(idx[0]) - min(idx[0]) + 1
         w = max(idx[1]) - min(idx[1]) + 1
         x0 = idx[1][0]
         y0 = idx[0][0]
-        # print(h, w)
 
-        # print(x0, y0, min(idx[0]), min(idx[1]))
+        print(f'\tStride out: {stride_out}, stride in: {stride_in}, patch radius: {pr}')
+        print(f'\tRetrieving ({n}x{n}) patches outside inpainting area...', end=' ')
+        patches_in_S = []
+        for y in range(pr, H-pr, stride_out):
+            for x in range(pr, W-pr, stride_out):
+                if mask[y, x].any():
+                    continue  # ignore patches in the mask
 
-        batch_size = 10
-        batch = []
+                patches_in_S.append(img[y-pr:y+pr+1, x-pr:x+pr+1, :].reshape(N, -1))
 
-        print('Retrieving patches inside inpainting area...')
-        patches_in_T = np.zeros((h, w, N, C))
-        n_tot = idx[0].shape[0]
-        for n, (y, x) in enumerate(zip(idx[0], idx[1])):
-            if n % batch_size == 0 and n != 0:
-                # np.array(batch)
+        print(f'Retrieved {len(patches_in_S)}.')
+        patches_in_S = np.stack(patches_in_S)
+        patches_in_S = patches_in_S.reshape(-1, N*C)
 
-                print(np.array(batch).shape)
-
-                print(f'Querying ({n}/{n_tot})', end='\t')
-                t0 = time()
-                kdtree.query(np.array(batch))
-                print(f'Done {time() - t0:.2f}s')
-                # exit()
-
-                batch = []
-
-            else:
+        print(f'\tRetrieving ({n}x{n}) patches inside inpainting area...', end=' ')
+        patches_in_T = []
+        for y in range(y0, y0+h+1, stride_in):
+            for x in range(x0, x0+w+1, stride_in):
                 p = img_inpainted[y-pr:y+pr+1, x-pr:x+pr+1, :].reshape(N, -1)
-                patches_in_T[y-y0, x-x0, :, :] = p
-                p = p.reshape(N*C)
-                batch.append(p)
+                patches_in_T.append(p)
 
-            if n > 10*batch_size:
-                exit()
+        print(f'Retrieved {len(patches_in_T)}.')
+        patches_in_T = np.stack(patches_in_T)
+        patches_in_T = patches_in_T.reshape(-1, N*C)
 
+        # Coherence distance
+        print('\tBuilding kdtree...')
+        kdtree = KDTree(patches_in_S)
 
+        print('\tFinding nearest neighbors of patches inside inpainting area...')
+        t0 = time()
+        D_coherence = kdtree.query(patches_in_T)[0]
+        D_coherence = np.mean(D_coherence)
+        print(f'\tDone {time() - t0:.2f}s')
 
-        # print(patches_in_T.shape)
-        patches_in_T = patches_in_T.reshape(h*w, N*C)
-        # print(patches_in_T.shape)
-        # exit()
+        if compute_completeness:
+            # Completeness distance
+            kdtree = KDTree(patches_in_T)
 
-        print('Finding nearest neighbors of patches inside inpainting area...')
-        r = kdtree.query(patches_in_T)
-        print(r)
-        print(r.shape)
+            print('\tFinding nearest neighbors of patches outside inpainting area...')
+            t0 = time()
+            D_complete = kdtree.query(patches_in_S)[0]
+            print(f'\tDone {time() - t0:.2f}s')
 
-        # print(idx)
-        exit()
+            D_complete = np.mean(D_complete)
 
+        else:
+            D_complete = None
+
+        return D_coherence, D_complete
 
 
 if __name__ == '__main__':
-    df = Examiner(root='to_evaluate').evaluate()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('root', type=str,
+                        help='Folder containing the subfolders to evaluate.')
+    parser.add_argument('--ext', type=str, default='jpg',
+                        help='Image extension.')
+    parser.add_argument('--stride-in', type=int, default=2,
+                        help='Stride inside the inpainting area.')
+    parser.add_argument('--stride-out', type=int, default=5,
+                        help='Stride outside the inpainting area.')
+    parser.add_argument('--pr', type=int, default=2,
+                        help='Patch radius (A 0-radius patch is a pixel).')
+    parser.add_argument('--complete', nargs='?', type=bool, const=True,
+                        help='Whether to compute the completeness distance.')
+
+    args = parser.parse_args()
+
+    root = os.path.join(args.root)
+    df = Examiner(root=root, ext=args.ext).evaluate(args.pr, args.stride_in, args.stride_out, args.complete)
+
+    df.to_csv(os.path.join(root, 'results.csv'))
+    df.to_latex(os.path.join(root, 'results.tex'))
+    df.to_pickle(os.path.join(root, 'results.pickle'))
 
     print(df)
-
