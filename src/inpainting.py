@@ -226,7 +226,7 @@ class Inpainting():
         bbox_A_t = bbox_A.pad(self.pr)
 
         for y, x in bbox_A:
-            u[y-bbox_A.y1-1, x-bbox_A.x1-1, :] = self.fz(phi, y, x, bbox_A_t)
+            u[y-bbox_A.y1, x-bbox_A.x1, :] = self.fz(phi, y, x, bbox_A_t)
 
         return u
 
