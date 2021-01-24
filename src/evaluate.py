@@ -69,9 +69,11 @@ class Examiner():
             PSNR = self.PSNR(img, inpainted, mask=None)
             PSNR_mask = self.PSNR(img, inpainted, mask=mask)
 
+            SSIM = self.SSIM(img, inpainted, mask, pr, stride_in)
+
             D_coherence, D_complete = self.D_BDS(img, inpainted, mask, pr, stride_out, stride_in, compute_completeness)
 
-            row = [path, SNR, SNR_mask, PSNR, PSNR_mask, D_coherence]
+            row = [path, SNR, SNR_mask, PSNR, PSNR_mask, SSIM, D_coherence]
             if compute_completeness:
                 D_DBS = D_coherence + D_complete
                 row.append(D_complete)
@@ -85,6 +87,7 @@ class Examiner():
             'SNR_mask_only',
             'PSNR',
             'PSNR_mask_only',
+            'SSIM',
             'D_coherence',
         ]
 
@@ -204,6 +207,53 @@ class Examiner():
             D_complete = None
 
         return D_coherence, D_complete
+
+    @staticmethod
+    def _ssim(patch1, patch2, L, k1=0.01, k2=0.03):
+        mu1 = np.mean(patch1)
+        mu2 = np.mean(patch2)
+        var1 = np.var(patch1)
+        var2 = np.var(patch2)
+        cov = np.mean((patch1 - mu1)*(patch2 - mu2))
+
+        c1 = (k1*L)**2
+        c2 = (k2*L)**2
+
+        a = (2*mu1*mu2 + c1)*(2*cov + c2)
+        b = (mu1**2 + mu2**2 + c1)*(var1 + var2 + c2)
+
+        SSIM = a/b
+
+        return SSIM
+
+    @staticmethod
+    def SSIM(img, img_inpainted, mask, pr, stride_in, L=255):
+        img = img.convert('L')
+        img = np.array(img)
+        img_inpainted = img_inpainted.convert('L')
+        img_inpainted = np.array(img_inpainted)
+
+        mask = np.array(mask).astype(bool)
+        idx = np.where(mask.any(axis=2))
+
+        n = 2*pr+1
+        N = n**2
+
+        H, W = img.shape
+
+        h = max(idx[0]) - min(idx[0]) + 1
+        w = max(idx[1]) - min(idx[1]) + 1
+        x0 = idx[1][0]
+        y0 = idx[0][0]
+
+        SSIMs = []
+        for y in range(y0, y0+h+1, stride_in):
+            for x in range(x0, x0+w+1, stride_in):
+                p_inpainted = img_inpainted[y-pr:y+pr+1, x-pr:x+pr+1].flatten()
+                p_real = img[y-pr:y+pr+1, x-pr:x+pr+1].flatten()
+                SSIMs.append(Examiner._ssim(p_inpainted, p_real, L))
+
+        return np.mean(SSIMs)
 
 
 if __name__ == '__main__':
