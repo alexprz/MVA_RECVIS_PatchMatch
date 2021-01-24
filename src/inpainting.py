@@ -626,7 +626,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-                # continue
+                continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
