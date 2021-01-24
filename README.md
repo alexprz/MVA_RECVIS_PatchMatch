@@ -43,5 +43,5 @@ parameter.
 
 ### Usage example:
 ```
-    python evaluate.py to_evaluate --ext png
+    python evaluate.py root --ext png
 ```
