@@ -31,6 +31,8 @@ class Examiner():
 
         self.img_folder_paths = self._retrieve_paths()
 
+        print(f'{len(self.img_folder_paths)} images found.')
+
     def _retrieve_paths(self):
         walk = os.walk(self.root)
 
@@ -66,9 +68,10 @@ class Examiner():
             PSNR = self.PSNR(img, inpainted, mask=None)
             PSNR_mask = self.PSNR(img, inpainted, mask=mask)
 
-            D_coherence = self.D_coherence(img, inpainted, mask, 2)
+            D_coherence, D_complete = self.D_BDS(img, inpainted, mask, 2)
+            D_DBS = D_coherence + D_complete
 
-            row = [path, SNR, SNR_mask, PSNR, PSNR_mask, D_coherence]
+            row = [path, SNR, SNR_mask, PSNR, PSNR_mask, D_coherence, D_complete, D_DBS]
             rows.append(row)
 
         return pd.DataFrame(rows, columns=[
@@ -78,6 +81,8 @@ class Examiner():
             'PSNR',
             'PSNR_mask_only',
             'D_coherence',
+            'D_complete',
+            'D_DBS',
         ])
 
     @staticmethod
@@ -123,8 +128,8 @@ class Examiner():
         return PSNR
 
     @staticmethod
-    def D_coherence(img, img_inpainted, mask, pr, stride_out=5, stride_in=2):
-        """Compute the coherence distance defined in the PatchMatch paper."""
+    def D_BDS(img, img_inpainted, mask, pr, stride_out=5, stride_in=2):
+        """Compute coherence & complete dist defined in PatchMatch paper."""
         img = np.array(img).astype(np.uint8)
         img_inpainted = np.array(img_inpainted).astype(np.uint8)
         mask = np.array(mask).astype(bool)
@@ -134,6 +139,11 @@ class Examiner():
         N = n**2
 
         H, W, C = img.shape
+
+        h = max(idx[0]) - min(idx[0]) + 1
+        w = max(idx[1]) - min(idx[1]) + 1
+        x0 = idx[1][0]
+        y0 = idx[0][0]
 
         print(f'\tStride out: {stride_out}, stride in: {stride_in}, patch radius: {pr}')
         print(f'\tRetrieving ({n}x{n}) patches outside inpainting area...', end=' ')
@@ -149,15 +159,6 @@ class Examiner():
         patches_in_S = np.stack(patches_in_S)
         patches_in_S = patches_in_S.reshape(-1, N*C)
 
-        print('\tBuilding kdtree...')
-        kdtree = KDTree(patches_in_S)
-        del patches_in_S
-
-        h = max(idx[0]) - min(idx[0]) + 1
-        w = max(idx[1]) - min(idx[1]) + 1
-        x0 = idx[1][0]
-        y0 = idx[0][0]
-
         print(f'\tRetrieving ({n}x{n}) patches inside inpainting area...', end=' ')
         patches_in_T = []
         for y in range(y0, y0+h+1, stride_in):
@@ -169,16 +170,33 @@ class Examiner():
         patches_in_T = np.stack(patches_in_T)
         patches_in_T = patches_in_T.reshape(-1, N*C)
 
+        # Coherence distance
+        print('\tBuilding kdtree...')
+        kdtree = KDTree(patches_in_S)
+
         print('\tFinding nearest neighbors of patches inside inpainting area...')
         t0 = time()
-        D = kdtree.query(patches_in_T)[0]
+        D_coherence = kdtree.query(patches_in_T)[0]
         print(f'\tDone {time() - t0:.2f}s')
 
-        return np.mean(D)
+        # Completeness distance
+        kdtree = KDTree(patches_in_T)
+
+        print('\tFinding nearest neighbors of patches outside inpainting area...')
+        t0 = time()
+        D_complete = kdtree.query(patches_in_S)[0]
+        print(f'\tDone {time() - t0:.2f}s')
+
+        return np.mean(D_coherence), np.mean(D_complete)
 
 
 if __name__ == '__main__':
-    df = Examiner(root='to_evaluate').evaluate()
+    root = os.path.join('to_evaluate')
+    df = Examiner(root=root).evaluate()
+
+    df.to_csv(root+'results.csv')
+    df.to_latex(root+'results.tex')
+    df.to_pickle(root+'results.pickle')
 
     print(df)
 
