@@ -260,6 +260,29 @@ class Inpainting():
 
         return u
 
+    def edge_init_hor(self, img_arr, bbox_A):
+        img_arr = np.array(img_arr)
+        u = bbox_A.zeros(3)
+        n, m, _ = u.shape
+        M = max(n, m)
+        d = abs(m-n)
+
+        x1, y1, x2, y2 = bbox_A.coords
+        left = img_arr[y1:y2+1, x1-1]
+        right = img_arr[y1:y2+1, x2+1]
+        top = img_arr[y1-1, x1:x2+1]
+        bot = img_arr[y2+1, x1:x2+1]
+
+        for yy, xx in bbox_A:
+            y = yy - y1
+            x = xx - x1
+            if x <= m//2:
+                u[y, x, :] = left[y]
+            else:
+                u[y, x, :] = right[y]
+
+        return u
+
 
     def inpaint(self, bbox, n_iter, n_iter_pm):
         """Inpaint the image at the given bounding box.
@@ -280,7 +303,7 @@ class Inpainting():
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
 
-        u_init = self.edge_init(B_masked, bbox_A)
+        u_init = self.edge_init_hor(B_masked, bbox_A)
         # img = Image.fromarray(np.uint8(u_init))
         # img.show()
         # exit()
@@ -293,7 +316,9 @@ class Inpainting():
         self.draw_rectangle(draw, *self.bbox_B_t.coords, color=(0, 255, 0))
 
         whole_u = np.array(B_masked)
-        whole_u[bbox_A.y1-1:bbox_A.y2, bbox_A.x1-1:bbox_A.x2, :] = u_init
+        whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u_init
+        current_img = Image.fromarray(np.uint8(whole_u))
+        current_img.show()
 
         W, H = self.bbox_B.size
 
@@ -306,7 +331,7 @@ class Inpainting():
 
             u = self.image_update(phi, bbox_A)
 
-            whole_u[bbox_A.y1-1:bbox_A.y2, bbox_A.x1-1:bbox_A.x2, :] = u
+            whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
             current_img = Image.fromarray(np.uint8(whole_u))
             draw = ImageDraw.Draw(current_img)
