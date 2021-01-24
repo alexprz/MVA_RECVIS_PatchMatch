@@ -270,8 +270,6 @@ class Inpainting():
         x1, y1, x2, y2 = bbox_A.coords
         left = img_arr[y1:y2+1, x1-1]
         right = img_arr[y1:y2+1, x2+1]
-        top = img_arr[y1-1, x1:x2+1]
-        bot = img_arr[y2+1, x1:x2+1]
 
         for yy, xx in bbox_A:
             y = yy - y1
@@ -280,6 +278,22 @@ class Inpainting():
                 u[y, x, :] = left[y]
             else:
                 u[y, x, :] = right[y]
+
+        return u
+
+    def edge_init_hor_linear(self, img_arr, bbox_A):
+        img_arr = np.array(img_arr)
+        u = bbox_A.zeros(3)
+        n, m, _ = u.shape
+        M = max(n, m)
+        d = abs(m-n)
+
+        x1, y1, x2, y2 = bbox_A.coords
+        left = img_arr[y1:y2+1, x1-1]
+        right = img_arr[y1:y2+1, x2+1]
+
+        u = np.linspace(left, right, m)
+        u = np.transpose(u, (1, 0, 2))
 
         return u
 
@@ -303,7 +317,7 @@ class Inpainting():
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
 
-        u_init = self.edge_init_hor(B_masked, bbox_A)
+        u_init = self.edge_init_hor_linear(B_masked, bbox_A)
         u = u_init
         # img = Image.fromarray(np.uint8(u_init))
         # img.show()
@@ -612,7 +626,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-                continue
+                # continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
