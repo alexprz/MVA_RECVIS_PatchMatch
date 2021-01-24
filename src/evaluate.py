@@ -124,119 +124,57 @@ class Examiner():
 
     @staticmethod
     def D_coherence(img, img_inpainted, mask, pr, stride_out=5, stride_in=2):
+        """Compute the coherence distance defined in the PatchMatch paper."""
         img = np.array(img).astype(np.uint8)
         img_inpainted = np.array(img_inpainted).astype(np.uint8)
         mask = np.array(mask).astype(bool)
-
         idx = np.where(mask)
 
-        # D = 0
-
-        # Build the KDTree
         n = 2*pr+1
         N = n**2
 
         H, W, C = img.shape
 
         print(f'\tStride out: {stride_out}, stride in: {stride_in}, patch radius: {pr}')
-
         print(f'\tRetrieving ({n}x{n}) patches outside inpainting area...', end=' ')
-        # patches_in_S = np.zeros((H, W, N, C))
         patches_in_S = []
-
-
         for y in range(pr, H-pr, stride_out):
             for x in range(pr, W-pr, stride_out):
                 if mask[y, x].any():
                     continue  # ignore patches in the mask
+
                 patches_in_S.append(img[y-pr:y+pr+1, x-pr:x+pr+1, :].reshape(N, -1))
 
-        # patches_in_S = [[img[y-pr:y+pr+1, x-pr:x+pr+1, :] for y in range(H)] for x in range(img.shape[1])]
-
         print(f'Retrieved {len(patches_in_S)}.')
-
-        # patches_in_S = np.array(patches_in_S)
         patches_in_S = np.stack(patches_in_S)
         patches_in_S = patches_in_S.reshape(-1, N*C)
 
         print('\tBuilding kdtree...')
         kdtree = KDTree(patches_in_S)
-
-        # print(patches_in_S.shape)
         del patches_in_S
-
-        # exit()
 
         h = max(idx[0]) - min(idx[0]) + 1
         w = max(idx[1]) - min(idx[1]) + 1
         x0 = idx[1][0]
         y0 = idx[0][0]
-        # print(h, w)
-
-        # print(x0, y0, min(idx[0]), min(idx[1]))
-
-        # batch_size = 5000
-        # batch = []
 
         print(f'\tRetrieving ({n}x{n}) patches inside inpainting area...', end=' ')
-        # patches_in_T = np.zeros((h, w, N, C))
         patches_in_T = []
-        # n_tot = len(range(y0, y0+h+1, stride_in))*len(range(x0, x0+w+1, stride_in))
-        # k = 0
-        # t00 = time()
         for y in range(y0, y0+h+1, stride_in):
             for x in range(x0, x0+w+1, stride_in):
-                # if k % batch_size == 0 and k != 0:
-                #     # np.array(batch)
-
-                #     # print(np.array(batch).shape)
-                #     batch = np.stack(patches_in_T)
-
-                #     print(f'Querying ({k}/{n_tot})', end='\t')
-                #     t0 = time()
-                #     kdtree.query(np.array(batch))
-                #     print(f'Done {time() - t0:.2f}s')
-                #     # exit()
-
-                #     patches_in_T = []
-
-                # else:
-                #     p = img_inpainted[y-pr:y+pr+1, x-pr:x+pr+1, :].reshape(N, -1)
-                #     patches_in_T.append(p.flatten())
-
-                # k += 1
-                # else:
                 p = img_inpainted[y-pr:y+pr+1, x-pr:x+pr+1, :].reshape(N, -1)
-                # # patches_in_T[y-y0, x-x0, :, :] = p
-                # p = p.reshape(N*C)
-
                 patches_in_T.append(p)
-                # batch.append(p)
 
-                # if n > 10*batch_size:
-                #     exit()
-
-
-        # print(f'Done {time() - t00:.2f}s')
         print(f'Retrieved {len(patches_in_T)}.')
-
         patches_in_T = np.stack(patches_in_T)
         patches_in_T = patches_in_T.reshape(-1, N*C)
 
         print('\tFinding nearest neighbors of patches inside inpainting area...')
         t0 = time()
-        r = kdtree.query(patches_in_T)
+        D = kdtree.query(patches_in_T)[0]
         print(f'\tDone {time() - t0:.2f}s')
-        # print(r)
-        # print(r.shape)
 
-        # print(idx)
-        # exit()
-
-        D = r[0]
-        print(D.shape)
         return np.mean(D)
-
 
 
 if __name__ == '__main__':
