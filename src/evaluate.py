@@ -58,25 +58,34 @@ class Examiner():
             inpainted = Image.open(os.path.join(path, self.inpainted_filename))
 
             SNR = self.SNR()
-            PSNR = self.PSNR(img, inpainted)
+            PSNR = self.PSNR(img, inpainted, mask=None)
+            PSNR_mask = self.PSNR(img, inpainted, mask=mask)
 
-            row = [path, SNR, PSNR]
+            row = [path, SNR, PSNR, PSNR_mask]
             rows.append(row)
 
-        return pd.DataFrame(rows, columns=['path', 'SNR', 'PSNR'])
+        return pd.DataFrame(rows, columns=['path', 'SNR', 'PSNR', 'PSNR_mask_only'])
 
     @staticmethod
     def SNR():
         return 0
 
     @staticmethod
-    def PSNR(img, img_inpainted):
+    def PSNR(img, img_inpainted, mask=None):
         """Compute the peak signal-to-noise ratio."""
         img = np.array(img)
         img_inpainted = np.array(img_inpainted)
 
+        if mask:
+            mask = np.array(mask).astype(bool)
+            idx = np.where(mask)
+
+            # Crop images where the mask is
+            img = img[idx]
+            img_inpainted = img_inpainted[idx]
+
         D = np.power(img - img_inpainted, 2)
-        MSE = np.mean(np.mean(np.mean(D, axis=2), axis=1))
+        MSE = np.mean(D.flatten())
         MAX = np.max(img)
         PSNR = 20*np.log10(MAX) - 10*np.log10(MSE)
 
