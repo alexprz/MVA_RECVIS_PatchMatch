@@ -233,6 +233,34 @@ class Inpainting():
     def map_update(self, u, bbox_A, n_iter):
         return self.patch_match(u, bbox_A, n_iter)
 
+    def edge_init(self, img_arr, bbox_A):
+        img_arr = np.array(img_arr)
+        u = bbox_A.zeros(3)
+        n, m, _ = u.shape
+        M = max(n, m)
+        d = abs(m-n)
+
+        x1, y1, x2, y2 = bbox_A.coords
+        left = img_arr[y1:y2+1, x1-1]
+        right = img_arr[y1:y2+1, x2+1]
+        top = img_arr[y1-1, x1:x2+1]
+        bot = img_arr[y2+1, x1:x2+1]
+
+        for yy, xx in bbox_A:
+            y = yy - y1
+            x = xx - x1
+            if x <= y <= n-x:
+                u[y, x, :] = left[y]
+            elif M-x <= y <= x-d:
+                u[y, x, :] = right[y]
+            elif y < x < m-y and y<n//2:
+                u[y, x, :] = top[x]
+            elif n-y < x < y+d:
+                u[y, x, :] = bot[x]
+
+        return u
+
+
     def inpaint(self, bbox, n_iter, n_iter_pm):
         """Inpaint the image at the given bounding box.
 
@@ -249,8 +277,13 @@ class Inpainting():
         bbox_A_t = bbox_A.pad(self.pr)  # extended bbox to patch radius
 
         B_masked = self.B.copy()
-        # img_draw = ImageDraw.Draw(B_masked)
-        # img_draw.rectangle(bbox, fill='black')
+        img_draw = ImageDraw.Draw(B_masked)
+        img_draw.rectangle(bbox, fill='black')
+
+        u_init = self.edge_init(B_masked, bbox_A)
+        # img = Image.fromarray(np.uint8(u_init))
+        # img.show()
+        # exit()
 
         img = self.B.copy()
         draw = ImageDraw.Draw(img)
@@ -260,6 +293,7 @@ class Inpainting():
         self.draw_rectangle(draw, *self.bbox_B_t.coords, color=(0, 255, 0))
 
         whole_u = np.array(B_masked)
+        whole_u[bbox_A.y1-1:bbox_A.y2, bbox_A.x1-1:bbox_A.x2, :] = u_init
 
         W, H = self.bbox_B.size
 
@@ -552,7 +586,7 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-                # continue
+                continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
