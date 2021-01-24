@@ -1,6 +1,7 @@
 """Use this file to evaluate inpainting results."""
 import os
 from PIL import Image
+import pandas as pd
 
 
 class Examiner():
@@ -40,15 +41,35 @@ class Examiner():
             if not self.required_filenames.issubset(filenames):
                 print(f'Warning: dir {folder} ignored because doesnt contain '
                       f'the required filenames {self.required_filenames}.')
+                continue
 
             img_folder_paths.append(folder)
 
         return img_folder_paths
 
     def evaluate(self):
-        pass
+
+        rows = []
+
+        for path in self.img_folder_paths:
+            img = Image.open(os.path.join(path, self.img_filename))
+            mask = Image.open(os.path.join(path, self.mask_filename))
+            inpainted = Image.open(os.path.join(path, self.inpainted_filename))
+
+            snr = self.SNR()
+
+            row = [path, snr]
+            rows.append(row)
+
+        return pd.DataFrame(rows, columns=['path', 'snr'])
+
+    @staticmethod
+    def SNR():
+        return 0
 
 
 if __name__ == '__main__':
-    Examiner(root='to_evaluate').evaluate()
+    df = Examiner(root='to_evaluate').evaluate()
+
+    print(df)
 
