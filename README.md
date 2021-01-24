@@ -23,7 +23,7 @@ optional arguments:
                         Whether to compute the completeness distance.
 ```
 
-First create a root folder in the `src\` directory. The architecture
+First create a root folder in the `src/` directory. The architecture
 inside this folder must be:
 ```
 src/
