@@ -687,3 +687,11 @@ class Inpainting():
         img_draw.rectangle(bbox, fill='black')
 
         return img
+
+    def get_mask_img(self, bbox):
+        """Get a binary image with 1 at the position of the mask."""
+        x1, y1, x2, y2 = Bbox(*bbox).coords
+        mask_arr = np.zeros_like(self.B).astype(bool)
+        mask_arr[y1:y2+1, x1:x2+1] = True
+        mask_img = Image.fromarray(np.uint8(mask_arr)*255)
+        return mask_img
