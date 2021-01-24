@@ -35,12 +35,12 @@ class Bbox():
     @property
     def w(self):
         """Get box width."""
-        return self.x2 - self.x1
+        return self.x2 - self.x1 + 1
 
     @property
     def h(self):
         """Get box height."""
-        return self.y2 - self.y1
+        return self.y2 - self.y1 + 1
 
     @property
     def size(self):
@@ -84,8 +84,8 @@ class Bbox():
 
     def iterator(self, flip=False):
         """Iterate over the pixels inside the bbox."""
-        range1 = list(range(self.x1, self.x2))
-        range2 = list(range(self.y1, self.y2))
+        range1 = list(range(self.x1, self.x2+1))
+        range2 = list(range(self.y1, self.y2+1))
 
         if flip:
             range1.reverse()
@@ -121,32 +121,34 @@ class Bbox():
         x2 = self.x2*np.ones(n)
         y2 = self.y2*np.ones(n)
 
-        xy_min = np.stack((y1, x1), axis=1)
-        xy_max = np.stack((y2, x2), axis=1)
+        y = pixels[:, 0]
+        x = pixels[:, 1]
 
-        return (xy_min <= pixels) & (pixels < xy_max)
+        return (y >= y1) & (y <= y2) & (x >= x1) & (x <= x2)
+
+        # xy_min = np.stack((y1, x1), axis=1)
+        # xy_max = np.stack((y2, x2), axis=1)
+
+        # return (xy_min <= pixels) & (pixels < xy_max)
 
     def outside(self, y, x):
-        if x < self.x1 or x > self.x2:
-            xp = x
+        if x < self.x1 or x > self.x2 or y < self.y1 or y > self.y2:
+            return y, x
 
+        # Both x and y are inside
+        # Project x onto boundary
+        if abs(x-self.x1) <= abs(x-self.x2):
+            xp = self.x1 - 1
         else:
-            if abs(x-self.x1) <= abs(x-self.x2):
-                xp = self.x1
-            else:
-                xp = self.x2
+            xp = self.x2 + 1
 
-        if y < self.y1 or y > self.y2:
-            yp = y
-
+        # Project y onto boundary
+        if abs(y-self.y1) <= abs(y-self.y2):
+            yp = self.y1 - 1
         else:
-            if abs(y-self.y1) <= abs(y-self.y2):
-                yp = self.y1
-            else:
-                yp = self.y2
+            yp = self.y2 + 1
 
         return yp, xp
-
 
 
 class Inpainting():
@@ -170,7 +172,7 @@ class Inpainting():
 
         self.B = img
         self.array_B = np.array(img)
-        self.bbox_B = Bbox(0, 0, img.width, img.height)
+        self.bbox_B = Bbox(0, 0, img.width-1, img.height-1)
         self.bbox_B_t = self.bbox_B.pad(-patch_radius)
         self.pr = patch_radius
         self.alpha = alpha
@@ -178,6 +180,15 @@ class Inpainting():
         self.sigma = sigma
 
         self.kernel = self.get_kernel()
+
+        self.valid_patch_idx = self.compute_valid_patch_indices_v2(flip=False)
+        self.valid_patch_idx_flip = self.compute_valid_patch_indices_v2(flip=True)
+
+        # print(self.valid_patch_idx)
+        # print(self.valid_patch_idx_flip)
+
+        # print(self.kernel[self.valid_patch_idx])
+        # exit()
 
 
     def patch_indices(self, flatten=False):
@@ -196,7 +207,7 @@ class Inpainting():
         g /= np.sum(g)
         return g
 
-    def fz(self, phi, y, x, bbox_A_t, bbox_A, indices_B, B):
+    def fz(self, phi, y, x, bbox_A_t):
         z = np.array([y, x])
         h = self.patch_indices(flatten=True)  # (p, 2)
 
@@ -204,46 +215,88 @@ class Inpainting():
         p = phi[d[:, 0]-bbox_A_t.y1-1, d[:, 1]-bbox_A_t.x1-1]  # (p, 2)
         p = p + h  # (p, 2)
 
-        # g = gaussian_filter(u_t, sigma=0.5)
         g = self.kernel.flatten()
         u_t = self.array_B[p[:, 0], p[:, 1], :]  # (p, 3)
         u_t = np.inner(g, u_t.T)
-        # u_t = u_t.mean(axis=0)
 
         return u_t
 
-        # exit()
-
-        # M = (p[None, :, :] == indices_B[:, None, :]).astype(int)
-        # # print(np.unique(M, return_counts=True))
-        # M = M.any(axis=2)
-        # M = M.sum(axis=1)
-        # # print(M.shape)
-        # # print(B.shape)
-        # # print(np.unique(M, return_counts=True))
-        # SM = M.sum()
-        # # print(SM)
-        # a = np.inner(M, B.T)/SM
-        # # print(a.shape)
-        # print(a)
-        # # exit()
-
-        # return a
-
-        # print(p)
-
-    def image_update(self, phi, bbox_A_t, bbox_A, indices_B, B):
-
+    def image_update(self, phi, bbox_A):
         u = bbox_A.zeros(3)
+        bbox_A_t = bbox_A.pad(self.pr)
 
-        for i, (y, x) in enumerate(bbox_A):
-            # print(i)
-            u[y-bbox_A.y1-1, x-bbox_A.x1-1, :] = self.fz(phi, y, x, bbox_A_t, bbox_A, indices_B, B)
+        for y, x in bbox_A:
+            u[y-bbox_A.y1, x-bbox_A.x1, :] = self.fz(phi, y, x, bbox_A_t)
 
         return u
 
-    def map_update(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
-        return self.patch_match(u, bbox_A, bbox_A_t, n_iter, indices_B, B)
+    def map_update(self, u, bbox_A, n_iter):
+        return self.patch_match(u, bbox_A, n_iter)
+
+    def edge_init(self, img_arr, bbox_A):
+        img_arr = np.array(img_arr)
+        u = bbox_A.zeros(3)
+        n, m, _ = u.shape
+        M = max(n, m)
+        d = abs(m-n)
+
+        x1, y1, x2, y2 = bbox_A.coords
+        left = img_arr[y1:y2+1, x1-1]
+        right = img_arr[y1:y2+1, x2+1]
+        top = img_arr[y1-1, x1:x2+1]
+        bot = img_arr[y2+1, x1:x2+1]
+
+        for yy, xx in bbox_A:
+            y = yy - y1
+            x = xx - x1
+            if x <= y <= n-x:
+                u[y, x, :] = left[y]
+            elif M-x <= y <= x-d:
+                u[y, x, :] = right[y]
+            elif y < x < m-y and y<n//2:
+                u[y, x, :] = top[x]
+            elif n-y < x < y+d:
+                u[y, x, :] = bot[x]
+
+        return u
+
+    def edge_init_hor(self, img_arr, bbox_A):
+        img_arr = np.array(img_arr)
+        u = bbox_A.zeros(3)
+        n, m, _ = u.shape
+        M = max(n, m)
+        d = abs(m-n)
+
+        x1, y1, x2, y2 = bbox_A.coords
+        left = img_arr[y1:y2+1, x1-1]
+        right = img_arr[y1:y2+1, x2+1]
+
+        for yy, xx in bbox_A:
+            y = yy - y1
+            x = xx - x1
+            if x <= m//2:
+                u[y, x, :] = left[y]
+            else:
+                u[y, x, :] = right[y]
+
+        return u
+
+    def edge_init_hor_linear(self, img_arr, bbox_A):
+        img_arr = np.array(img_arr)
+        u = bbox_A.zeros(3)
+        n, m, _ = u.shape
+        M = max(n, m)
+        d = abs(m-n)
+
+        x1, y1, x2, y2 = bbox_A.coords
+        left = img_arr[y1:y2+1, x1-1]
+        right = img_arr[y1:y2+1, x2+1]
+
+        u = np.linspace(left, right, m)
+        u = np.transpose(u, (1, 0, 2))
+
+        return u
+
 
     def inpaint(self, bbox, n_iter, n_iter_pm):
         """Inpaint the image at the given bounding box.
@@ -263,31 +316,59 @@ class Inpainting():
         B_masked = self.B.copy()
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
+
+        u_init = self.edge_init_hor_linear(B_masked, bbox_A)
+        u = u_init
+        # img = Image.fromarray(np.uint8(u_init))
+        # img.show()
+        # exit()
+
+        img = self.B.copy()
+        draw = ImageDraw.Draw(img)
+
+        draw.rectangle(bbox, fill='black')
+        self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
+        self.draw_rectangle(draw, *self.bbox_B_t.coords, color=(0, 255, 0))
+
         whole_u = np.array(B_masked)
+        whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u_init
+        current_img = Image.fromarray(np.uint8(whole_u))
+        current_img.show()
 
         W, H = self.bbox_B.size
-        is_patch_in_A_t = np.zeros((H, W)).astype(bool)
-        x1, y1, x2, y2 = bbox_A_t.coords
-        is_patch_in_A_t[y1:y2, x1:x2] = True
-        is_patch_in_A_t = is_patch_in_A_t.flatten()
-
-        indices_B = np.indices((H, W)).reshape(2, H*W).T
-        indices_B = np.delete(indices_B, is_patch_in_A_t, axis=0)
-
-        B = np.array(self.B)
-
-        # phi = self.init_phi(H, W, bbox_A_t)
 
         for k in range(n_iter):
             print(f'inpainting iter {k}')
-            phi = self.map_update(whole_u, bbox_A, bbox_A_t, n_iter_pm, indices_B, B)
+            phi = self.map_update(whole_u, bbox_A, n_iter_pm)
 
             phi_r = phi.reshape(-1, 2)
             assert Bbox(self.pr, self.pr, W-self.pr, H-self.pr).is_inside(phi_r).all()
 
-            u = self.image_update(phi, bbox_A_t, bbox_A, indices_B, B)
-            whole_u[bbox_A.y1:bbox_A.y2, bbox_A.x1:bbox_A.x2, :] = u
+            u = self.image_update(phi, bbox_A)
 
+            whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
+
+            current_img = Image.fromarray(np.uint8(whole_u))
+            draw = ImageDraw.Draw(current_img)
+            for i in range(phi.shape[0]):
+                for j in range(phi.shape[1]):
+                    i2, j2 = phi[i, j]
+                    self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+
+            current_img.show()
+
+        current_img = Image.fromarray(np.uint8(whole_u))
+
+        # draw = ImageDraw.Draw(current_img)
+        # self.draw_rectangle(draw, *bbox_A.coords, color=(0, 255, 0))
+
+        # current_img.show()
+        # for i in range(phi.shape[0]):
+        #     for j in range(phi.shape[1]):
+        #         i2, j2 = phi[i, j]
+                # self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+
+        # current_img.show()
 
         img = Image.fromarray(np.uint8(u))
         return img
@@ -301,7 +382,7 @@ class Inpainting():
     def init_phi(self, H, W, bbox_A_t):
         is_patch_in_A_t = np.zeros((H, W)).astype(bool)
         x1, y1, x2, y2 = bbox_A_t.coords
-        is_patch_in_A_t[y1:y2, x1:x2] = True
+        is_patch_in_A_t[y1:y2+1, x1:x2+1] = True
         is_patch_in_A_t = is_patch_in_A_t.flatten()
 
         is_patch_on_edge = np.zeros((H, W)).astype(bool)
@@ -321,7 +402,51 @@ class Inpainting():
 
         return phi
 
-    def patch_match(self, u, bbox_A, bbox_A_t, n_iter, indices_B, B):
+    def draw_center_patch(self, draw, x, y, color, r=None):
+        r = self.pr if r is None else r
+        draw.line([x-r, y, x+r, y], fill=color)
+        draw.line([x, y-r, x, y+r], fill=color)
+
+    def draw_rectangle(self, draw, x1, y1, x2, y2, color):
+        draw.line([(x1, y1), (x2, y1)], fill=color)
+        draw.line([(x1, y1), (x1, y2)], fill=color)
+        draw.line([(x2, y1), (x2, y2)], fill=color)
+        draw.line([(x1, y2), (x2, y2)], fill=color)
+
+    def compute_valid_patch_indices(self, flip):
+        N = 2*self.pr+1
+        patch_mask = np.zeros((N, N)).astype(bool)
+
+        if flip:
+            patch_mask[self.pr+1:, :] = True
+            patch_mask[self.pr, self.pr+1:] = True
+
+        else:
+            patch_mask[:self.pr, :] = True
+            patch_mask[self.pr, :self.pr] = True
+
+        return np.where(patch_mask)
+
+    def compute_valid_patch_indices_v2(self, flip):
+        N = 2*self.pr+1
+        patch_mask = np.zeros((N, N)).astype(bool)
+
+        if flip:
+            patch_mask[self.pr:, self.pr+1:] = True
+            patch_mask[self.pr+1:, self.pr:] = True
+
+        else:
+            patch_mask[:self.pr, :self.pr+1] = True
+            patch_mask[:self.pr+1, :self.pr] = True
+
+        return np.where(patch_mask)
+
+    def get_valid_patch_indices(self, flip):
+        if flip:
+            return self.valid_patch_idx_flip
+        return self.valid_patch_idx
+
+    def patch_match(self, u, bbox_A, n_iter):
         # Randomly init a map phi
         H, W, _ = u.shape
 
@@ -345,25 +470,58 @@ class Inpainting():
 
         # phi = indices_B_t[idx].reshape(h_t, w_t, 2)
 
+        bbox_A_t = bbox_A.pad(self.pr)
         phi = self.init_phi(H, W, bbox_A_t)
+
+        current_img = Image.fromarray(np.uint8(u))
+        # current_img.show()
+        draw = ImageDraw.Draw(current_img)
+        # r = self.pr
+        for i in range(phi.shape[0]):
+            for j in range(phi.shape[1]):
+                # print(phi[i, j])
+                i2, j2 = phi[i, j]
+                # draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 0, 0))
+                # draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 0, 0))
+                # self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+                # draw.point(phi[i, j], fill=(255, 0, 0))
+        # current_img.show()
+        # exit()
+
+
+        self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
 
         pr = self.pr
 
         def D(p1, p2, flip):
-            d = np.sum(np.power(p1 - p2, 2), axis=2)
-            if flip:
-                d1 = d[pr+1:, :].flatten()
-                k1 = self.kernel[pr+1:, :].flatten()
-                d2 = d[pr, pr+1:].flatten()
-                k2 = self.kernel[pr, pr+1:].flatten()
+            # idx = self.get_valid_patch_indices(flip)
+            # p1 = p1[idx]
+            # p2 = p2[idx]
+            # d = np.sum(np.power(p1 - p2, 2), axis=2)
+            # k = self.kernel
+            # return np.inner(d.flatten(), k.flatten())
+            idx = self.get_valid_patch_indices(flip)
+            p1 = p1[idx]
+            p2 = p2[idx]
+            d = np.sum(np.power(p1 - p2, 2), axis=1)
+            k = self.kernel[idx]
+            return np.inner(d, k)
+            # exit()
+            # d = np.sum(np.power(p1 - p2, 2), axis=2)
+            # return np.inner(d.flatten(), self.kernel.flatten())
+            # if flip:
+            #     d1 = d[pr+1:, :].flatten()
+            #     k1 = self.kernel[pr+1:, :].flatten()
+            #     d2 = d[pr, pr+1:].flatten()
+            #     k2 = self.kernel[pr, pr+1:].flatten()
 
-            else:
-                d1 = d[:pr, :].flatten()
-                k1 = self.kernel[:pr, :].flatten()
-                d2 = d[pr, :pr].flatten()
-                k2 = self.kernel[pr, :pr].flatten()
+            # else:
+            #     d1 = d[:pr, :].flatten()
+            #     k1 = self.kernel[:pr, :].flatten()
+            #     d2 = d[pr, :pr].flatten()
+            #     k2 = self.kernel[pr, :pr].flatten()
 
-            return np.inner(k1, d1) + np.inner(k2, d2)
+            # return np.inner(k1, d1) + np.inner(k2, d2)
 
         # def D(p1, p2):
         #     d = np.sum(np.power(p1 - p2, 2), axis=2).flatten()
@@ -372,12 +530,12 @@ class Inpainting():
         #     return np.inner(k, d)
 
         x0, y0, *_ = bbox_A_t.coords
-        print(phi.shape)
+
         for k in range(1, n_iter+1):
             print(f'Patch match iter {k}')
             flip = (k % 2 == 0)
             # flip = False
-            for y, x in bbox_A_t.iterator(flip=flip):
+            for nb, (y, x) in enumerate(bbox_A_t.iterator(flip=flip)):
                 # print(y, x)
                 # Propagation stage
                 # y = y_A - y0
@@ -390,16 +548,23 @@ class Inpainting():
                 # print(y, x)
 
                 y1, x1 = phi[y-y0, x-x0, :]  # middle
+                # self.draw_center_patch(draw, x1, y1, (0, 0, 255))
                 y1, x1 = bbox_A_t.outside(y1, x1)
+                # self.draw_center_patch(draw, x1, y1, (0, 0, 255))
+
                 if 0 <= x-x0+delta < phi.shape[1]:
                     y2, x2 = phi[y-y0, x-x0+delta, :]  # left/right
                     x2 = np.clip(x2-delta, pr, self.bbox_B.w-pr-1).astype(int)
                     y2, x2 = bbox_A_t.outside(y2, x2)
                 else:
+                    # y2, x2 = y, x+delta
+                    # y2, x2 = None, None
                     y2, x2 = bbox_A_t.outside(y, x+delta)  #phi[y-y0, x-x0+delta, :]  # left/right
+                    # self.draw_center_patch(draw, x2, y2, (255, 255, 0))
                     # y2, x2 = y, x+delta  #phi[y-y0, x-x0+delta, :]  # left/right
                     # y2, x2 = None, None#phi[y-y0, x-x0, :]
                     # print("Edge left", y2, x2, y, x)
+                # self.draw_center_patch(draw, x2, y2, (255, 0, 0))
 
                 if 0 <= y-y0+delta < phi.shape[0]:
                     y3, x3 = phi[y-y0+delta, x-x0, :]  # up/down
@@ -407,19 +572,28 @@ class Inpainting():
                     y3, x3 = bbox_A_t.outside(y3, x3)
                 else:
                     # y3, x3 = y+delta, x #phi[y-y0+delta, x-x0, :]  # up/down
+                    # y3, x3 = None, None
                     y3, x3 = bbox_A_t.outside(y+delta, x) #phi[y-y0+delta, x-x0, :]  # up/down
+                    # self.draw_center_patch(draw, x3, y3, (255, 0, 255))
                     # y3, x3 = None, None #phi[y-y0, x-x0, :]
                     # print("Edge up", y3, x3, y, x)
+                # self.draw_center_patch(draw, x3, y3, (0, 255, 0))
 
                 patch1 = u[y1-pr:y1+pr+1, x1-pr:x1+pr+1, :]
+                # self.draw_rectangle(draw, x1-pr, y1-pr, x1+pr, y1+pr, color=(0, 255, 0))
+                # self.draw_center_patch(draw, x1, y1, color=(0, 255, 0), r=0)
                 D1 = D(patch0, patch1, flip)
 
                 if y2 is not None:
                     patch2 = u[y2-pr:y2+pr+1, x2-pr:x2+pr+1, :]
+                    # self.draw_rectangle(draw, x2-pr, y2-pr, x2+pr, y2+pr, color=(255, 0, 0))
+                    # self.draw_center_patch(draw, x2, y2, color=(255, 0, 0), r=0)
                     # print(y2-pr, y2+pr+1, x2-pr, x2+pr+1)
                     D2 = D(patch0, patch2, flip)
                 if y3 is not None:
                     patch3 = u[y3-pr:y3+pr+1, x3-pr:x3+pr+1, :]
+                    # self.draw_rectangle(draw, x3-pr, y3-pr, x3+pr, y3+pr, color=(0, 0, 255))
+                    # self.draw_center_patch(draw, x3, y3, color=(0, 0, 255), r=0)
                     D3 = D(patch0, patch3, flip)
 
                 argmin = y1, x1
@@ -437,6 +611,22 @@ class Inpainting():
                 assert self.pr <= x_argmin < self.bbox_B.w - self.pr
                 assert self.pr <= y_argmin < self.bbox_B.h - self.pr
                 phi[y-y0, x-x0, :] = argmin
+
+                # i2, j2 = argmin
+                # draw.line([(j2-r, i2), (j2+r, i2)], fill=(255, 255, 0))
+                # draw.line([(j2, i2-r), (j2, i2+r)], fill=(255, 255, 0))
+                # self.draw_center_patch(draw, j2, i2, (255, 255, 0))
+
+                # break
+                # if nb > 10000:
+                #     break
+
+                # if (y-y0) % 25 == 0 and x-x0 == 0:
+                #     img_arr = self.image_update(phi, bbox_A)
+                #     img = Image.fromarray(np.uint8(img_arr))
+                #     img.show()
+
+                continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
@@ -457,6 +647,8 @@ class Inpainting():
                         k += 1
                         continue
 
+                    self.draw_center_patch(draw, x_rand, y_rand, (255, 0, 255))
+
                     # Check if it is better
                     patch_rand = u[y_rand-pr:y_rand+pr+1, x_rand-pr:x_rand+pr+1, :]
 
@@ -472,6 +664,18 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
+            # img_arr = self.image_update(phi, bbox_A)
+            # img = Image.fromarray(np.uint8(img_arr))
+            # img.show()
+
+        # self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
+        # current_img.show()
+
+        # for i in range(phi.shape[0]):
+        #     for j in range(phi.shape[1]):
+        #         i2, j2 = phi[i, j]
+        #         self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+        # current_img.show()
 
         return phi
 
