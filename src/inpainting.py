@@ -1,9 +1,12 @@
 """Implement the inpainting class."""
+import os
 import numpy as np
 from PIL import Image, ImageDraw
 from collections.abc import Iterable
 from scipy.ndimage import gaussian_filter
 from scipy.stats import multivariate_normal
+
+from evaluate import Examiner
 
 
 class Bbox():
@@ -51,6 +54,27 @@ class Bbox():
     def coords(self):
         """Get box coordinates."""
         return self.x1, self.y1, self.x2, self.y2
+
+    @classmethod
+    def from_mask(cls, mask, keep_true=True):
+        mask = np.array(mask).astype(bool)
+
+        if not keep_true:
+            mask = ~mask
+
+        idx = np.where(mask)
+
+        h = max(idx[0]) - min(idx[0]) + 1
+        w = max(idx[1]) - min(idx[1]) + 1
+        x1 = int(idx[1][0])
+        y1 = int(idx[0][0])
+        x2 = int(x1 + w - 1)
+        y2 = int(y1 + h - 1)
+
+        return cls(x1, y1, x2, y2)
+
+    def __getitem__(self, key):
+        return self.coords[key]
 
     def pad(self, p):
         """Pad the bbox to extend or reduce its size on all sides.
@@ -695,3 +719,21 @@ class Inpainting():
         mask_arr[y1:y2+1, x1:x2+1] = True
         mask_img = Image.fromarray(np.uint8(mask_arr)*255)
         return mask_img
+
+
+if __name__ == '__main__':
+    ex = Examiner(root='landscapes')
+
+    for path in ex.img_folder_paths:
+        print(f'Inpainting "{path}"')
+        img = Image.open(os.path.join(path, ex.img_filename))
+        mask = Image.open(os.path.join(path, ex.mask_filename))
+
+        bbox = Bbox.from_mask(mask, keep_true=False)
+
+        inp = Inpainting(img, patch_radius=7, alpha=0.1, beta=None, sigma=0.5)
+
+        inpaint = inp.inpaint(bbox.coords, n_iter=0, n_iter_pm=2)
+        img_inpainted = inp.fill_hole(bbox[0], bbox[1], inpaint)
+        img_inpainted.save(os.path.join(path, f'inpainted.{ex.ext}'))
+
