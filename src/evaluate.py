@@ -57,18 +57,35 @@ class Examiner():
             mask = Image.open(os.path.join(path, self.mask_filename))
             inpainted = Image.open(os.path.join(path, self.inpainted_filename))
 
-            SNR = self.SNR()
+            SNR = self.SNR(img, inpainted, mask=None)
+            SNR_mask = self.SNR(img, inpainted, mask=mask)
             PSNR = self.PSNR(img, inpainted, mask=None)
             PSNR_mask = self.PSNR(img, inpainted, mask=mask)
 
-            row = [path, SNR, PSNR, PSNR_mask]
+            row = [path, SNR, SNR_mask, PSNR, PSNR_mask]
             rows.append(row)
 
-        return pd.DataFrame(rows, columns=['path', 'SNR', 'PSNR', 'PSNR_mask_only'])
+        return pd.DataFrame(rows, columns=['path', 'SNR', 'SNR_mask_only', 'PSNR', 'PSNR_mask_only'])
 
     @staticmethod
-    def SNR():
-        return 0
+    def SNR(img, img_inpainted, mask=None):
+        img = np.array(img)
+        img_inpainted = np.array(img_inpainted)
+
+        if mask:
+            mask = np.array(mask).astype(bool)
+            idx = np.where(mask)
+
+            # Crop images where the mask is
+            img = img[idx]
+            img_inpainted = img_inpainted[idx]
+
+        D1 = np.power(img_inpainted, 2)
+        D2 = np.power(img - img_inpainted, 2)
+
+        SNR = np.sum(D1)/np.sum(D2)
+
+        return SNR
 
     @staticmethod
     def PSNR(img, img_inpainted, mask=None):
