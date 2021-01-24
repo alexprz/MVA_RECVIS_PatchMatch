@@ -2,6 +2,7 @@
 import os
 from PIL import Image
 import pandas as pd
+import numpy as np
 
 
 class Examiner():
@@ -56,16 +57,30 @@ class Examiner():
             mask = Image.open(os.path.join(path, self.mask_filename))
             inpainted = Image.open(os.path.join(path, self.inpainted_filename))
 
-            snr = self.SNR()
+            SNR = self.SNR()
+            PSNR = self.PSNR(img, inpainted)
 
-            row = [path, snr]
+            row = [path, SNR, PSNR]
             rows.append(row)
 
-        return pd.DataFrame(rows, columns=['path', 'snr'])
+        return pd.DataFrame(rows, columns=['path', 'SNR', 'PSNR'])
 
     @staticmethod
     def SNR():
         return 0
+
+    @staticmethod
+    def PSNR(img, img_inpainted):
+        """Compute the peak signal-to-noise ratio."""
+        img = np.array(img)
+        img_inpainted = np.array(img_inpainted)
+
+        D = np.power(img - img_inpainted, 2)
+        MSE = np.mean(np.mean(np.mean(D, axis=2), axis=1))
+        MAX = np.max(img)
+        PSNR = 20*np.log10(MAX) - 10*np.log10(MSE)
+
+        return PSNR
 
 
 if __name__ == '__main__':
