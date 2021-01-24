@@ -304,6 +304,7 @@ class Inpainting():
         img_draw.rectangle(bbox, fill='black')
 
         u_init = self.edge_init_hor(B_masked, bbox_A)
+        u = u_init
         # img = Image.fromarray(np.uint8(u_init))
         # img.show()
         # exit()
