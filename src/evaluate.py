@@ -104,7 +104,7 @@ class Examiner():
         img_inpainted = np.array(img_inpainted)
 
         if mask:
-            mask = np.array(mask).astype(bool)
+            mask = ~np.array(mask).astype(bool)
             idx = np.where(mask)
 
             # Crop images where the mask is
@@ -125,7 +125,7 @@ class Examiner():
         img_inpainted = np.array(img_inpainted)
 
         if mask:
-            mask = np.array(mask).astype(bool)
+            mask = ~np.array(mask).astype(bool)
             idx = np.where(mask)
 
             # Crop images where the mask is
@@ -144,7 +144,7 @@ class Examiner():
         """Compute coherence & complete dist defined in PatchMatch paper."""
         img = np.array(img).astype(np.uint8)
         img_inpainted = np.array(img_inpainted).astype(np.uint8)
-        mask = np.array(mask).astype(bool)
+        mask = ~np.array(mask).astype(bool)
         idx = np.where(mask)
 
         n = 2*pr+1
@@ -233,8 +233,8 @@ class Examiner():
         img_inpainted = img_inpainted.convert('L')
         img_inpainted = np.array(img_inpainted)
 
-        mask = np.array(mask).astype(bool)
-        idx = np.where(mask.any(axis=2))
+        mask = ~np.array(mask).astype(bool)
+        idx = np.where(mask)
 
         n = 2*pr+1
         N = n**2
