@@ -22,7 +22,7 @@ class Examiner():
         # Required filenames
         self.img_filename = f'img.{ext}'
         self.mask_filename = f'mask.{ext}'
-        self.inpainted_filename = f'corrupted.{ext}'
+        self.inpainted_filename = f'inpainted.{ext}'
 
         self.required_filenames = set([
             self.img_filename,
