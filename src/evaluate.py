@@ -54,7 +54,7 @@ class Examiner():
 
         return img_folder_paths
 
-    def evaluate(self, pr=2, stride_out=5, stride_in=2, compute_completeness=False):
+    def evaluate(self, pr, stride_out, stride_in, compute_completeness=False):
 
         rows = []
 
@@ -262,9 +262,9 @@ if __name__ == '__main__':
                         help='Folder containing the subfolders to evaluate.')
     parser.add_argument('--ext', type=str, default='jpg',
                         help='Image extension.')
-    parser.add_argument('--stride-in', type=int, default=2,
+    parser.add_argument('--stride-in', type=int, default=1,
                         help='Stride inside the inpainting area.')
-    parser.add_argument('--stride-out', type=int, default=5,
+    parser.add_argument('--stride-out', type=int, default=1,
                         help='Stride outside the inpainting area.')
     parser.add_argument('--pr', type=int, default=2,
                         help='Patch radius (A 0-radius patch is a pixel).')
@@ -281,3 +281,5 @@ if __name__ == '__main__':
     df.to_pickle(os.path.join(root, 'results.pickle'))
 
     print(df)
+
+    print(f'Results were dumped in "{args.root}".')

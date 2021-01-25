@@ -1,0 +1,14 @@
+{
+    "alpha": 0.9,
+    "beta": null,
+    "id": 6,
+    "init": 2,
+    "n": 2,
+    "n_pm": 2,
+    "pr": 2,
+    "root": "landscapes",
+    "sigma": 0.2,
+    "sigma_dist": 2.0,
+    "sigma_update": 0.6,
+    "skip_rs": false
+}
