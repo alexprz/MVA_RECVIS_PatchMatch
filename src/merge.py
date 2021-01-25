@@ -25,6 +25,10 @@ for name in df_names:
 
 df = pd.concat(dfs, axis=0)
 
+df['SNR'] = df['SNR_mask_only']
+df['PSNR'] = df['PSNR_mask_only']
+df = df.drop(['SNR_mask_only', 'PSNR_mask_only'], axis=1)
+
 df['img'] = df['path'].str.split('/', expand=True)[1]
 print(df)
 
@@ -53,7 +57,7 @@ df_ranks.to_pickle(os.path.join(root, 'ranks_all.pickle'))
 
 df_ranks_avg = df_ranks.groupby('method').mean()
 
-df_ranks_avg['Mean'] =  df_ranks_avg.mean(axis=1).round(1)
+df_ranks_avg['Mean'] = df_ranks_avg.mean(axis=1).round(1)
 
 print(df_ranks_avg)
 df_ranks_avg.to_csv(os.path.join(root, 'ranks_avg.csv'))
