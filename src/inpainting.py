@@ -285,7 +285,8 @@ class Inpainting():
                 u[y, x, :] = right[y]
             elif y < x < m-y and y<n//2:
                 u[y, x, :] = top[x]
-            elif n-y < x < y+d:
+            else:
+            # elif n-y < x < y+d:
                 u[y, x, :] = bot[x]
 
         return u
@@ -774,6 +775,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    np.random.seed(0)
     ex = Examiner(root=args.root)
 
     # for path in ex.img_folder_paths:
