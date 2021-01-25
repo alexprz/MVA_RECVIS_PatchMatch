@@ -26,3 +26,11 @@ for name in df_names:
 df = pd.concat(dfs, axis=0)
 
 print(df)
+
+df_avg = df.groupby('method').mean()
+
+print(df_avg)
+
+df_avg.to_csv(os.path.join(root, 'average.csv'))
+df_avg.to_latex(os.path.join(root, 'average.tex'))
+df_avg.to_pickle(os.path.join(root, 'average.pickle'))
