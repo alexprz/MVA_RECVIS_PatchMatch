@@ -46,9 +46,9 @@ class Examiner():
 
             # Check if required files are present
             if not self.required_filenames.issubset(filenames):
-                print(f'Warning: dir "{folder}"" ignored because doesnt contain '
+                print(f'Warning: dir "{folder}"" doesnt contain all of '
                       f'the required filenames {self.required_filenames}.')
-                continue
+                # continue
 
             img_folder_paths.append(folder)
 
