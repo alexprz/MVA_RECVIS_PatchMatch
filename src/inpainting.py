@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from scipy.ndimage import gaussian_filter
 from scipy.stats import multivariate_normal
 import argparse
+import json
 
 from evaluate import Examiner
 
@@ -207,8 +208,8 @@ class Inpainting():
         self.skip_rs = skip_rs
 
         # self.kernel = self.get_kernel(self.sigma)
-        self.kernel_img_update = self.get_kernel(self.sigma)
-        self.kernel_distance = self.get_kernel(self.sigma)
+        self.kernel_img_update = self.get_kernel(sigma_img_update)
+        self.kernel_distance = self.get_kernel(sigma_distance)
 
         self.valid_patch_idx = self.compute_valid_patch_indices_v2(flip=False)
         self.valid_patch_idx_flip = self.compute_valid_patch_indices_v2(flip=True)
@@ -232,7 +233,7 @@ class Inpainting():
         pr = self.pr
         x, y = np.mgrid[-pr:pr+1:1, -pr:pr+1:1]
         pos = np.dstack((x, y))
-        g = multivariate_normal(mean=np.zeros(2), cov=sigma*np.eye(2)).pdf(pos)
+        g = multivariate_normal(mean=np.zeros(2), cov=sigma**2*np.eye(2)).pdf(pos)
         g /= np.sum(g)
         return g
 
@@ -789,5 +790,9 @@ if __name__ == '__main__':
     img_inpainted = inp.fill_hole(bbox[0], bbox[1], inpaint)
     img_inpainted.show()
     img_inpainted.save(os.path.join(path, f'inpainted.{ex.ext}'))
+
+    with open(os.path.join(path, 'args.json'), 'w', encoding='utf8') as file:
+        s = json.dumps(args.__dict__, indent=4, sort_keys=True)
+        file.write(s)
 
 
