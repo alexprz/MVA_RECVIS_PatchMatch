@@ -178,7 +178,7 @@ class Bbox():
 
 class Inpainting():
 
-    def __init__(self, img, patch_radius, alpha, beta, sigma=2, sigma_img_update=None, sigma_distance=None):
+    def __init__(self, img, patch_radius, alpha, beta, sigma=2, sigma_img_update=None, sigma_distance=None, init=0, skip_rs=False):
         """Init.
 
         Args:
@@ -203,6 +203,8 @@ class Inpainting():
         self.alpha = alpha
         self.beta = max(img.size[0], img.size[1]) if beta is None else beta
         self.sigma = sigma
+        self.init = init
+        self.skip_rs = skip_rs
 
         # self.kernel = self.get_kernel(self.sigma)
         self.kernel_img_update = self.get_kernel(self.sigma)
@@ -344,7 +346,16 @@ class Inpainting():
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
 
-        u_init = self.edge_init(B_masked, bbox_A)
+        if self.init == 0:
+            print('Init edge')
+            u_init = self.edge_init(B_masked, bbox_A)
+        elif self.init == 1:
+            print('Init horizontal')
+            u_init = self.edge_init_hor(B_masked, bbox_A)
+        elif self.init == 2:
+            print('Init horizontal linear')
+            u_init = self.edge_init_hor_linear(B_masked, bbox_A)
+
         # u_init = self.edge_init_hor_linear(B_masked, bbox_A)
         u = u_init
         # img = Image.fromarray(np.uint8(u_init))
@@ -377,11 +388,11 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
             current_img = Image.fromarray(np.uint8(whole_u))
-            draw = ImageDraw.Draw(current_img)
-            for i in range(phi.shape[0]):
-                for j in range(phi.shape[1]):
-                    i2, j2 = phi[i, j]
-                    self.draw_center_patch(draw, j2, i2, (255, 0, 0), r=0)
+            # draw = ImageDraw.Draw(current_img)
+            # for i in range(phi.shape[0]):
+            #     for j in range(phi.shape[1]):
+            #         i2, j2 = phi[i, j]
+            #         self.draw_center_patch(draw, j2, i2, (255, 0, 0), r=0)
 
             current_img.show()
 
@@ -656,7 +667,8 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-                # continue
+                if self.skip_rs:
+                    continue
 
                 # Random search stage
                 v0 = phi[y-y0, x-x0, :]
@@ -699,9 +711,9 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-            img_arr = self.image_update(phi, bbox_A)
-            img = Image.fromarray(np.uint8(img_arr))
-            img.show()
+            # img_arr = self.image_update(phi, bbox_A)
+            # img = Image.fromarray(np.uint8(img_arr))
+            # img.show()
 
         # self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
         # current_img.show()
@@ -750,6 +762,10 @@ if __name__ == '__main__':
                         help='Width of the gaussian kernel.')
     parser.add_argument('--pr', type=int, default=2,
                         help='Patch radius (A 0-radius patch is a pixel).')
+    parser.add_argument('--init', type=int, default=2,
+                        help='Type of initialization')
+    parser.add_argument('--skip-rs', nargs='?', type=bool, default=False, const=True,
+                        help='Whether to skip the random search.')
     parser.add_argument('--n', type=int, default=2,
                         help='Number of inpainting iterations.')
     parser.add_argument('--n-pm', type=int, default=2,
@@ -767,7 +783,7 @@ if __name__ == '__main__':
 
     bbox = Bbox.from_mask(mask, keep_true=False)
 
-    inp = Inpainting(img, patch_radius=args.pr, alpha=args.alpha, beta=args.beta, sigma_distance=args.sigma_dist, sigma_img_update=args.sigma_update, sigma=args.sigma)
+    inp = Inpainting(img, patch_radius=args.pr, alpha=args.alpha, beta=args.beta, sigma_distance=args.sigma_dist, sigma_img_update=args.sigma_update, sigma=args.sigma, init=args.init, skip_rs=args.skip_rs)
 
     inpaint = inp.inpaint(bbox.coords, n_iter=args.n, n_iter_pm=args.n_pm)
     img_inpainted = inp.fill_hole(bbox[0], bbox[1], inpaint)
