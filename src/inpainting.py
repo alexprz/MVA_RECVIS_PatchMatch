@@ -178,7 +178,7 @@ class Bbox():
 
 class Inpainting():
 
-    def __init__(self, img, patch_radius, alpha, beta, sigma=2):
+    def __init__(self, img, patch_radius, alpha, beta, sigma=2, sigma_img_update=None, sigma_distance=None):
         """Init.
 
         Args:
@@ -204,7 +204,9 @@ class Inpainting():
         self.beta = max(img.size[0], img.size[1]) if beta is None else beta
         self.sigma = sigma
 
-        self.kernel = self.get_kernel()
+        # self.kernel = self.get_kernel(self.sigma)
+        self.kernel_img_update = self.get_kernel(self.sigma)
+        self.kernel_distance = self.get_kernel(self.sigma)
 
         self.valid_patch_idx = self.compute_valid_patch_indices_v2(flip=False)
         self.valid_patch_idx_flip = self.compute_valid_patch_indices_v2(flip=True)
@@ -224,11 +226,11 @@ class Inpainting():
             indices = indices.reshape(-1, 2)
         return indices
 
-    def get_kernel(self):
+    def get_kernel(self, sigma):
         pr = self.pr
         x, y = np.mgrid[-pr:pr+1:1, -pr:pr+1:1]
         pos = np.dstack((x, y))
-        g = multivariate_normal(mean=np.zeros(2), cov=self.sigma*np.eye(2)).pdf(pos)
+        g = multivariate_normal(mean=np.zeros(2), cov=sigma*np.eye(2)).pdf(pos)
         g /= np.sum(g)
         return g
 
@@ -240,7 +242,7 @@ class Inpainting():
         p = phi[d[:, 0]-bbox_A_t.y1-1, d[:, 1]-bbox_A_t.x1-1]  # (p, 2)
         p = p + h  # (p, 2)
 
-        g = self.kernel.flatten()
+        g = self.kernel_img_update.flatten()
         u_t = self.array_B[p[:, 0], p[:, 1], :]  # (p, 3)
         u_t = np.inner(g, u_t.T)
 
@@ -342,7 +344,8 @@ class Inpainting():
         img_draw = ImageDraw.Draw(B_masked)
         img_draw.rectangle(bbox, fill='black')
 
-        u_init = self.edge_init_hor_linear(B_masked, bbox_A)
+        u_init = self.edge_init(B_masked, bbox_A)
+        # u_init = self.edge_init_hor_linear(B_masked, bbox_A)
         u = u_init
         # img = Image.fromarray(np.uint8(u_init))
         # img.show()
@@ -358,7 +361,7 @@ class Inpainting():
         whole_u = np.array(B_masked)
         whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u_init
         current_img = Image.fromarray(np.uint8(whole_u))
-        # current_img.show()
+        current_img.show()
 
         W, H = self.bbox_B.size
 
@@ -374,11 +377,11 @@ class Inpainting():
             whole_u[bbox_A.y1:bbox_A.y2+1, bbox_A.x1:bbox_A.x2+1, :] = u
 
             current_img = Image.fromarray(np.uint8(whole_u))
-            # draw = ImageDraw.Draw(current_img)
-            # for i in range(phi.shape[0]):
-            #     for j in range(phi.shape[1]):
-            #         i2, j2 = phi[i, j]
-            #         self.draw_center_patch(draw, j2, i2, (255, 0, 0))
+            draw = ImageDraw.Draw(current_img)
+            for i in range(phi.shape[0]):
+                for j in range(phi.shape[1]):
+                    i2, j2 = phi[i, j]
+                    self.draw_center_patch(draw, j2, i2, (255, 0, 0), r=0)
 
             current_img.show()
 
@@ -523,14 +526,16 @@ class Inpainting():
             # p1 = p1[idx]
             # p2 = p2[idx]
             # d = np.sum(np.power(p1 - p2, 2), axis=2)
-            # k = self.kernel
+            # k = self.kernel_distance
             # return np.inner(d.flatten(), k.flatten())
+
             idx = self.get_valid_patch_indices(flip)
             p1 = p1[idx]
             p2 = p2[idx]
             d = np.sum(np.power(p1 - p2, 2), axis=1)
-            k = self.kernel[idx]
+            k = self.kernel_distance[idx]
             return np.inner(d, k)
+
             # exit()
             # d = np.sum(np.power(p1 - p2, 2), axis=2)
             # return np.inner(d.flatten(), self.kernel.flatten())
@@ -666,7 +671,12 @@ class Inpainting():
 
                     # Randomly retrieve a nearby offset
                     eps = np.random.uniform(-1, 1, size=2)
-                    y_rand, x_rand = np.clip((v0 + radius*eps).astype(int), [pr, pr], [H-pr-1, W-pr-1])
+                    y_rand, x_rand = (v0 + radius*eps).astype(int)
+                    # y_rand, x_rand = np.clip((v0 + radius*eps).astype(int), [pr, pr], [H-pr-1, W-pr-1])
+
+                    if not self.bbox_B_t.is_inside([y_rand, x_rand]).any():
+                        k += 1
+                        continue
 
                     if bbox_A_t.is_inside([y_rand, x_rand]).any():
                         k += 1
@@ -689,9 +699,9 @@ class Inpainting():
                 #     img = Image.fromarray(np.uint8(img_arr))
                 #     img.show()
 
-            # img_arr = self.image_update(phi, bbox_A)
-            # img = Image.fromarray(np.uint8(img_arr))
-            # img.show()
+            img_arr = self.image_update(phi, bbox_A)
+            img = Image.fromarray(np.uint8(img_arr))
+            img.show()
 
         # self.draw_rectangle(draw, *bbox_A_t.coords, color=(0, 255, 0))
         # current_img.show()
@@ -734,6 +744,10 @@ if __name__ == '__main__':
                         help='Range of the random search.')
     parser.add_argument('--sigma', type=float, default=0.2,
                         help='Width of the gaussian kernel.')
+    parser.add_argument('--sigma-update', type=float, default=0.2,
+                        help='Width of the gaussian kernel.')
+    parser.add_argument('--sigma-dist', type=float, default=0.2,
+                        help='Width of the gaussian kernel.')
     parser.add_argument('--pr', type=int, default=2,
                         help='Patch radius (A 0-radius patch is a pixel).')
     parser.add_argument('--n', type=int, default=2,
@@ -746,17 +760,18 @@ if __name__ == '__main__':
     ex = Examiner(root=args.root)
 
     # for path in ex.img_folder_paths:
-    path = ex.img_folder_paths[0]
+    path = ex.img_folder_paths[args.id]
     print(f'Inpainting "{path}"')
     img = Image.open(os.path.join(path, ex.img_filename))
     mask = Image.open(os.path.join(path, ex.mask_filename))
 
     bbox = Bbox.from_mask(mask, keep_true=False)
 
-    inp = Inpainting(img, patch_radius=args.pr, alpha=args.alpha, beta=args.beta, sigma=args.sigma)
+    inp = Inpainting(img, patch_radius=args.pr, alpha=args.alpha, beta=args.beta, sigma_distance=args.sigma_dist, sigma_img_update=args.sigma_update, sigma=args.sigma)
 
     inpaint = inp.inpaint(bbox.coords, n_iter=args.n, n_iter_pm=args.n_pm)
     img_inpainted = inp.fill_hole(bbox[0], bbox[1], inpaint)
+    img_inpainted.show()
     img_inpainted.save(os.path.join(path, f'inpainted.{ex.ext}'))
 
 
